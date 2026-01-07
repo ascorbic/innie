@@ -2,7 +2,7 @@
  * OpenCode Plugin Hooks for Innie
  *
  * Provides:
- * - file.edited: Index state file changes for semantic search
+ * - file.edited: Index state file changes for semantic search + git autocommit
  * - experimental.session.compacting: Preserve critical state during compaction
  *
  * These hooks use the memory package directly rather than calling MCP tools,
@@ -11,12 +11,63 @@
 
 import type { Plugin } from "@opencode-ai/plugin";
 import { basename, relative } from "node:path";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import { indexFile, type MemoryItemType } from "@innie/memory/indexer";
+
+const execAsync = promisify(exec);
 
 // Patterns for content type detection
 const PEOPLE_PATTERN = /^state\/people\/.*\.md$/;
 const PROJECT_PATTERN = /^state\/projects\/.*\.md$/;
 const MEETING_PATTERN = /^state\/meetings\/.*\.md$/;
+
+// Debounce git commits - collect changes over 2 seconds
+let commitTimeout: ReturnType<typeof setTimeout> | null = null;
+const pendingFiles: Set<string> = new Set();
+
+/**
+ * Queue a file for git commit, debounced to batch rapid changes
+ */
+async function queueGitCommit(filePath: string, memoryDir: string) {
+  pendingFiles.add(basename(filePath));
+
+  if (commitTimeout) {
+    clearTimeout(commitTimeout);
+  }
+
+  commitTimeout = setTimeout(async () => {
+    const files = Array.from(pendingFiles);
+    pendingFiles.clear();
+    commitTimeout = null;
+
+    try {
+      // Stage and commit state changes
+      await execAsync("git add -A", { cwd: memoryDir });
+
+      // Check if there are staged changes
+      const { stdout: status } = await execAsync(
+        "git diff --cached --name-only",
+        { cwd: memoryDir }
+      );
+      if (!status.trim()) return;
+
+      const message =
+        files.length === 1
+          ? `Update ${files[0]}`
+          : `Update ${files.length} files: ${files.slice(0, 3).join(", ")}${files.length > 3 ? "..." : ""}`;
+
+      await execAsync(`git commit -m "${message}"`, { cwd: memoryDir });
+      console.error(`[Hooks] Committed: ${message}`);
+    } catch (error) {
+      // Git errors are non-fatal
+      console.error(
+        `[Hooks] Git commit failed:`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  }, 2000);
+}
 
 /**
  * Determine the memory type for a file path
@@ -69,6 +120,12 @@ export const InnieHooksPlugin: Plugin = async (_ctx) => {
           `[Hooks] Failed to index ${filePath}:`,
           error instanceof Error ? error.message : error
         );
+      }
+
+      // Queue git commit for state changes
+      const memoryDir = process.env.MEMORY_DIR;
+      if (memoryDir) {
+        queueGitCommit(filePath, memoryDir);
       }
     },
 
