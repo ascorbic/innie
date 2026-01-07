@@ -30,8 +30,49 @@ All state lives in `state/` and is git-tracked.
 | `ambient-tasks.md` | Tasks for quiet time | ~30 lines |
 | `projects/*.md` | Project context | As needed |
 | `people/*.md` | People context | As needed |
+| `meetings/*/` | Meeting artifacts (when needed) | As needed |
 
 Prune aggressively. Archive completed items. Single source of truth.
+
+## Frontmatter Conventions
+
+State files use YAML frontmatter for machine-queryable metadata. Body content remains human-readable markdown.
+
+**People files** (`state/people/*.md`):
+```yaml
+---
+email: alice@example.com
+company: Acme Corp
+role: Engineering Manager
+relationship: external  # colleague | external | stakeholder
+last_contact: 2026-01-07
+---
+```
+
+**Meeting folders** (`state/meetings/*/briefing.md`):
+```yaml
+---
+date: 2026-01-07T14:00:00
+attendees:
+  - alice@example.com
+  - bob@example.com
+type: external  # 1:1 | team | external | interview | presentation
+status: upcoming  # upcoming | complete
+---
+```
+
+**Projects** (`state/projects/*.md`):
+```yaml
+---
+status: active  # active | paused | complete
+priority: high  # low | medium | high
+stakeholders:
+  - alice@example.com
+due_date: 2026-01-15
+---
+```
+
+Parse frontmatter when you need to query across files (for example, find all upcoming external meetings, or people you haven't contacted recently).
 
 ## Memory Tools
 

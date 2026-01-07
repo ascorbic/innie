@@ -93,9 +93,15 @@ state/meetings/2026-01-07-acme-intro/
 **Briefing template** (`briefing.md`):
 
 ```markdown
+---
+date: 2026-01-07T14:00:00
+attendees:
+  - alice@example.com
+  - bob@example.com
+type: external
+status: upcoming
+---
 # [Meeting name]
-**Date:** [Date and time]
-**Attendees:** [List]
 
 ## Context
 [Why this meeting is happening, what we hope to achieve]
@@ -112,6 +118,8 @@ state/meetings/2026-01-07-acme-intro/
 - [Question 2]
 ```
 
+The frontmatter enables queries like "find all upcoming external meetings" or "meetings with Alice in the last month".
+
 ### 6. Update today.md
 
 Add calendar-related items to today's priorities:
@@ -125,11 +133,14 @@ Add calendar-related items to today's priorities:
 When creating a new person file at `state/people/[name].md`:
 
 ```markdown
-# [Full Name]
-
-**Role:** [Title at Company]
-**Company:** [Company name]
-**First contact:** [Date and context]
+---
+email: alice@example.com
+company: Acme Corp
+role: Product Manager
+relationship: external
+last_contact: 2026-01-07
+---
+# Alice Smith
 
 ## Context
 [How we know them, relationship context]
@@ -138,8 +149,10 @@ When creating a new person file at `state/people/[name].md`:
 [Key things to remember - communication style, interests, previous discussions]
 
 ## Interactions
-- [Date]: [Brief note on interaction]
+- 2026-01-07: [Brief note on interaction]
 ```
+
+The frontmatter makes the file queryable (find external contacts, people not contacted recently), while the body stays human-readable.
 
 ## Output
 
