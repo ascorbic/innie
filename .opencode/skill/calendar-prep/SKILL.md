@@ -63,12 +63,37 @@ For each event, ask:
 
 Add any prep tasks to `state/today.md` with the meeting time as deadline.
 
-### 5. Create briefings
+### 5. Create meeting folders (when needed)
 
-For significant external meetings, create a briefing in `state/briefings/[date]-[meeting-slug].md`:
+Only create a meeting folder when the meeting needs artifacts (briefings, prep docs, notes). Don't create folders for routine meetings.
+
+**Structure:** `state/meetings/[date]-[meeting-slug]/`
+
+Create a folder when:
+- External meeting requiring research
+- Interview
+- Important presentation
+- Complex meeting needing prep docs
+- Any meeting where you'll want to capture notes
+
+**Don't create a folder for:**
+- Regular standups
+- Quick syncs
+- Routine 1:1s (unless there's something specific to prep)
+
+**Folder contents (as needed):**
+
+```
+state/meetings/2026-01-07-acme-intro/
+├── briefing.md      # Pre-meeting research and talking points
+├── prep.md          # Specific preparation tasks or documents
+└── notes.md         # Meeting notes (created during/after)
+```
+
+**Briefing template** (`briefing.md`):
 
 ```markdown
-# Briefing: [Meeting name]
+# [Meeting name]
 **Date:** [Date and time]
 **Attendees:** [List]
 
@@ -85,9 +110,6 @@ For significant external meetings, create a briefing in `state/briefings/[date]-
 ## Questions to ask
 - [Question 1]
 - [Question 2]
-
-## Prep checklist
-- [ ] [Any prep tasks]
 ```
 
 ### 6. Update today.md
@@ -126,5 +148,5 @@ After completing the workflow, summarize:
 - Events requiring attention in the next 24-48 hours
 - Prep tasks added to today.md
 - New people files created
-- Any briefings prepared
+- Meeting folders created (with paths)
 - Gaps (events you couldn't fully prep for and why)
