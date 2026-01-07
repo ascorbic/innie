@@ -1,5 +1,5 @@
 {
-  "name": "@innie-ai/memory",
+  "name": "@mk.gg/innie-memory",
   "version": "1.0.0",
   "description": "Memory MCP server for semantic search and journaling",
   "type": "module",

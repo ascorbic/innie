@@ -1,5 +1,5 @@
 {
-  "name": "@innie-ai/calendar",
+  "name": "@mk.gg/innie-calendar",
   "version": "1.0.0",
   "description": "Calendar MCP server using AppleScript to query Calendar.app",
   "type": "module",
