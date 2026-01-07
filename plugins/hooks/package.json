@@ -1,5 +1,5 @@
 {
-  "name": "@innie/hooks",
+  "name": "@innie-ai/hooks",
   "version": "1.0.0",
   "description": "OpenCode plugin hooks for memory and state management",
   "type": "module",

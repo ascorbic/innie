@@ -17,7 +17,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import schedule from "node-schedule";
 
-const MEMORY_DIR = process.env.MEMORY_DIR || path.join(process.env.HOME || "", ".innie");
+const MEMORY_DIR =
+  process.env.MEMORY_DIR || path.join(process.env.HOME || "", ".innie");
 const SCHEDULE_FILE = path.join(MEMORY_DIR, "schedule.json");
 const OPENCODE_PATH = process.env.OPENCODE_PATH || "opencode";
 const OPENCODE_PROJECT = process.env.OPENCODE_PROJECT || process.cwd();
@@ -71,7 +72,7 @@ async function saveSchedule(state: ScheduleState): Promise<void> {
  */
 async function markReminderRun(id: string): Promise<void> {
   const state = await loadSchedule();
-  const reminder = state.reminders.find(r => r.id === id);
+  const reminder = state.reminders.find((r) => r.id === id);
   if (reminder) {
     reminder.lastRun = new Date().toISOString();
     state.version++;
@@ -85,7 +86,7 @@ async function markReminderRun(id: string): Promise<void> {
  */
 async function removeOnceReminder(id: string): Promise<void> {
   const state = await loadSchedule();
-  state.reminders = state.reminders.filter(r => r.id !== id);
+  state.reminders = state.reminders.filter((r) => r.id !== id);
   state.version++;
   currentVersion = state.version;
   await saveSchedule(state);
@@ -100,7 +101,7 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
   const payload = `[Scheduled reminder: ${reminder.description}]\n\n${reminder.payload}`;
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(OPENCODE_PATH, [payload], {
+    const proc = spawn(OPENCODE_PATH, ["run", payload], {
       cwd: OPENCODE_PROJECT,
       stdio: "inherit",
       env: {
@@ -121,7 +122,9 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
           activeJobs.delete(reminder.id);
         }
       } else {
-        console.error(`[Scheduler] Failed with code ${code}: ${reminder.description}`);
+        console.error(
+          `[Scheduler] Failed with code ${code}: ${reminder.description}`,
+        );
       }
       resolve();
     });
@@ -151,7 +154,9 @@ function scheduleReminder(reminder: ScheduledReminder): void {
     // One-shot reminder
     const date = new Date(reminder.schedule);
     if (date <= new Date()) {
-      console.log(`[Scheduler] Skipping past reminder: ${reminder.description}`);
+      console.log(
+        `[Scheduler] Skipping past reminder: ${reminder.description}`,
+      );
       return;
     }
     job = schedule.scheduleJob(reminder.id, date, () => {
@@ -162,7 +167,9 @@ function scheduleReminder(reminder: ScheduledReminder): void {
   if (job) {
     activeJobs.set(reminder.id, job);
     const nextRun = job.nextInvocation();
-    console.log(`[Scheduler] Scheduled: ${reminder.description} (next: ${nextRun?.toISOString() || "N/A"})`);
+    console.log(
+      `[Scheduler] Scheduled: ${reminder.description} (next: ${nextRun?.toISOString() || "N/A"})`,
+    );
   } else {
     console.error(`[Scheduler] Failed to schedule: ${reminder.description}`);
   }
@@ -179,11 +186,13 @@ async function syncSchedule(): Promise<void> {
     return;
   }
 
-  console.log(`[Scheduler] Syncing schedule (version ${currentVersion} -> ${state.version})`);
+  console.log(
+    `[Scheduler] Syncing schedule (version ${currentVersion} -> ${state.version})`,
+  );
   currentVersion = state.version;
 
   // Get current reminder IDs
-  const newIds = new Set(state.reminders.map(r => r.id));
+  const newIds = new Set(state.reminders.map((r) => r.id));
 
   // Cancel jobs for removed reminders
   for (const [id, job] of activeJobs) {
@@ -205,14 +214,16 @@ async function syncSchedule(): Promise<void> {
  */
 function watchScheduleFile(): void {
   if (!existsSync(SCHEDULE_FILE)) {
-    console.log(`[Scheduler] Schedule file not found, will create on first reminder`);
+    console.log(
+      `[Scheduler] Schedule file not found, will create on first reminder`,
+    );
     return;
   }
 
   const watcher = watch(SCHEDULE_FILE, async (eventType) => {
     if (eventType === "change") {
       // Debounce rapid changes
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       await syncSchedule();
     }
   });

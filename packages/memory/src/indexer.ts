@@ -27,7 +27,12 @@ const LOGS_PATH = MEMORY_DIR
 const INDEX_PATH = join(STATE_PATH, ".memory-index");
 
 // Item types for filtering
-export type MemoryItemType = "journal" | "state" | "project" | "person" | "meeting";
+export type MemoryItemType =
+  | "journal"
+  | "state"
+  | "project"
+  | "person"
+  | "meeting";
 
 export interface MemoryItem {
   id: string;
@@ -136,7 +141,7 @@ export async function searchMemory(
     limit?: number;
     type?: MemoryItemType;
     since?: string; // ISO date
-  } = {}
+  } = {},
 ): Promise<SearchResult[]> {
   const { limit = 5, type, since } = options;
   const idx = await getIndex();
@@ -150,8 +155,8 @@ export async function searchMemory(
 
   const queryVector = await embed(query);
 
-  // Vectra's queryItems signature: (vector, query, topK, filter?, isBm25?)
-  const results = await idx.queryItems(queryVector, query, limit * 2);
+  // Vectra's queryItems signature: (vector, topK, filter?)
+  const results = await idx.queryItems(queryVector, limit * 2);
 
   // Filter results if type or since specified
   let filtered = results;
@@ -159,7 +164,8 @@ export async function searchMemory(
     filtered = results.filter((item) => {
       const meta = item.item.metadata as Record<string, unknown>;
       if (type && meta.type !== type) return false;
-      if (since && meta.timestamp && (meta.timestamp as string) < since) return false;
+      if (since && meta.timestamp && (meta.timestamp as string) < since)
+        return false;
       return true;
     });
   }
@@ -207,7 +213,7 @@ async function parseJournalForIndexing(): Promise<MemoryItem[]> {
  */
 async function parseMarkdownForIndexing(
   filePath: string,
-  type: MemoryItemType
+  type: MemoryItemType,
 ): Promise<MemoryItem[]> {
   try {
     const content = await readFile(filePath, "utf-8");
@@ -263,7 +269,7 @@ async function findMarkdownFiles(dir: string): Promise<string[]> {
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        files.push(...await findMarkdownFiles(fullPath));
+        files.push(...(await findMarkdownFiles(fullPath)));
       } else if (entry.name.endsWith(".md")) {
         files.push(fullPath);
       }
@@ -291,9 +297,17 @@ export async function rebuildIndex(): Promise<{ itemCount: number }> {
 
   // 2. Index state files
   console.error("[Memory] Parsing state files...");
-  const stateFiles = ["today.md", "inbox.md", "commitments.md", "ambient-tasks.md"];
+  const stateFiles = [
+    "today.md",
+    "inbox.md",
+    "commitments.md",
+    "ambient-tasks.md",
+  ];
   for (const file of stateFiles) {
-    const items = await parseMarkdownForIndexing(join(STATE_PATH, file), "state");
+    const items = await parseMarkdownForIndexing(
+      join(STATE_PATH, file),
+      "state",
+    );
     allItems.push(...items);
   }
 
@@ -363,7 +377,7 @@ export async function getIndexStats(): Promise<{ itemCount: number }> {
 export async function indexFile(
   filePath: string,
   content: string,
-  type: MemoryItemType
+  type: MemoryItemType,
 ): Promise<{ itemCount: number }> {
   const filename = filePath.split("/").pop() || filePath;
   console.error(`[Memory] Indexing file: ${filename} (${type})`);

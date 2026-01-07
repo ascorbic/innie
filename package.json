@@ -1,12 +1,12 @@
 {
-	"name": "@innie/workspace",
+	"name": "@innie-ai/workspace",
 	"private": true,
 	"version": "1.0.0",
 	"description": "Work Innie - Stateful agent for work context",
 	"scripts": {
-		"check": "pnpm run --filter @innie/* check",
-		"test": "pnpm run --filter @innie/* test",
-		"build": "pnpm run --filter @innie/* build",
+		"check": "pnpm run --filter @innie-ai/* check",
+		"test": "pnpm run --filter @innie-ai/* test",
+		"build": "pnpm run --filter @innie-ai/* build",
 		"format": "prettier --write ."
 	},
 	"keywords": [],

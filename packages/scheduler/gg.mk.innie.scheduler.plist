@@ -7,20 +7,24 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/node</string>
-        <string>/Users/matt/Repos/innie/packages/scheduler/dist/index.mjs</string>
+        <string>/Users/mkane/.nvm/versions/node/v22.21.0/bin/node</string>
+        <string>/Users/mkane/Repos/innie/packages/scheduler/dist/index.mjs</string>
     </array>
 
     <key>EnvironmentVariables</key>
     <dict>
+        <key>HOME</key>
+        <string>/Users/mkane</string>
         <key>MEMORY_DIR</key>
-        <string>/Users/matt/Repos/innie-memory</string>
+        <string>/Users/mkane/Repos/innie-memory</string>
         <key>OPENCODE_PATH</key>
         <string>/opt/homebrew/bin/opencode</string>
         <key>OPENCODE_PROJECT</key>
-        <string>/Users/matt/Repos/innie</string>
+        <string>/Users/mkane/Repos/innie</string>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>NODE_EXTRA_CA_CERTS</key>
+        <string>/Users/mkane/.local/share/cloudflare-warp-certs/CloudflareRootCertificateCombined.pem</string>
     </dict>
 
     <key>RunAtLoad</key>
@@ -30,12 +34,12 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/matt/Repos/innie-memory/logs/scheduler.log</string>
+    <string>/Users/mkane/Repos/innie-memory/logs/scheduler.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/matt/Repos/innie-memory/logs/scheduler.error.log</string>
+    <string>/Users/mkane/Repos/innie-memory/logs/scheduler.error.log</string>
 
     <key>WorkingDirectory</key>
-    <string>/Users/matt/Repos/innie</string>
+    <string>/Users/mkane/Repos/innie</string>
 </dict>
 </plist>

@@ -1,22 +1,18 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "instructions": [
-    "/Users/matt/Repos/innie-memory/state/today.md",
-    "/Users/matt/Repos/innie-memory/state/inbox.md",
-    "/Users/matt/Repos/innie-memory/state/commitments.md"
+    "/Users/mkane/Repos/innie-memory/state/today.md",
+    "/Users/mkane/Repos/innie-memory/state/inbox.md",
+    "/Users/mkane/Repos/innie-memory/state/commitments.md"
   ],
   "mcp": {
     "memory": {
       "type": "local",
-      "command": ["npx", "/Users/matt/Repos/innie/packages/memory"],
+      "command": ["npx", "/Users/mkane/Repos/innie/packages/memory"],
       "environment": {
-        "MEMORY_DIR": "/Users/matt/Repos/innie-memory"
+        "MEMORY_DIR": "/Users/mkane/Repos/innie-memory"
       }
-    },
-    "calendar": {
-      "type": "local",
-      "command": ["npx", "/Users/matt/Repos/innie/packages/calendar"]
     }
   },
-  "plugin": ["./plugins/hooks/dist/index.js"]
+  "plugin": ["./plugins/hooks/dist/index.mjs"]
 }

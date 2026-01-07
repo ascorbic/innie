@@ -1,3 +1,8 @@
+---
+name: alerts
+description: Send alerts and notifications using AppleScript - banners, modals, and text-to-speech
+---
+
 # Alerts Skill
 
 Send alerts and notifications to Matt using AppleScript.
