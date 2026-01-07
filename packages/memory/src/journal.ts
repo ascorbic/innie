@@ -24,7 +24,11 @@ export interface ConversationSummary {
   learnedPatterns?: string[];
 }
 
-const LOGS_PATH = process.env.INNIE_LOGS_PATH || join(process.cwd(), "logs");
+// MEMORY_DIR is the base directory, with fallback to legacy vars
+const MEMORY_DIR = process.env.MEMORY_DIR;
+const LOGS_PATH = MEMORY_DIR
+  ? join(MEMORY_DIR, "logs")
+  : process.env.INNIE_LOGS_PATH || join(process.cwd(), "logs");
 const JOURNAL_PATH = join(LOGS_PATH, "journal.jsonl");
 const SUMMARIES_DIR = join(LOGS_PATH, "summaries");
 

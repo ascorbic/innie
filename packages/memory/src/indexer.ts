@@ -16,9 +16,14 @@ import { join, dirname } from "path";
 import { readFile, readdir, stat, mkdir } from "fs/promises";
 import { embed, embedBatch } from "./embeddings.js";
 
-// Paths configured from environment or defaults
-const STATE_PATH = process.env.INNIE_STATE_PATH || join(process.cwd(), "state");
-const LOGS_PATH = process.env.INNIE_LOGS_PATH || join(process.cwd(), "logs");
+// MEMORY_DIR is the base directory, with fallback to legacy vars
+const MEMORY_DIR = process.env.MEMORY_DIR;
+const STATE_PATH = MEMORY_DIR
+  ? join(MEMORY_DIR, "state")
+  : process.env.INNIE_STATE_PATH || join(process.cwd(), "state");
+const LOGS_PATH = MEMORY_DIR
+  ? join(MEMORY_DIR, "logs")
+  : process.env.INNIE_LOGS_PATH || join(process.cwd(), "logs");
 const INDEX_PATH = join(STATE_PATH, ".memory-index");
 
 // Item types for filtering
