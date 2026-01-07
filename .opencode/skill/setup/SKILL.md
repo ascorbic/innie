@@ -161,16 +161,7 @@ Innie needs to access the memory repo from any working directory. By default, Op
     }
   },
   "permission": {
-    "read": {
-      "*": "allow",
-      "/path/to/innie-memory/**": "allow"
-    },
-    "edit": {
-      "*": "allow",
-      "/path/to/innie-memory/**": "allow"
-    },
     "external_directory": {
-      "*": "ask",
       "/path/to/innie-memory/**": "allow"
     }
   }
@@ -181,7 +172,7 @@ The key permission is `external_directory` – without this, scheduled tasks and
 
 ### 5. Configure Project-Level Settings
 
-In the innie repository, create or update `opencode.json` with the same structure:
+In the innie repository, the `opencode.json` should mirror the global config but also include the hooks plugin:
 
 ```json
 {
@@ -201,16 +192,7 @@ In the innie repository, create or update `opencode.json` with the same structur
     }
   },
   "permission": {
-    "read": {
-      "*": "allow",
-      "/path/to/innie-memory/**": "allow"
-    },
-    "edit": {
-      "*": "allow",
-      "/path/to/innie-memory/**": "allow"
-    },
     "external_directory": {
-      "*": "ask",
       "/path/to/innie-memory/**": "allow"
     }
   },
@@ -304,13 +286,9 @@ Inside the session, test:
 
 ## Environment Variables
 
-| Variable           | Purpose                             | Default                   |
-| ------------------ | ----------------------------------- | ------------------------- |
-| `MEMORY_DIR`       | Root directory for memory repo      | Current working directory |
-| `INNIE_STATE_PATH` | Override path to state/             | `$MEMORY_DIR/state`       |
-| `INNIE_LOGS_PATH`  | Override path to logs/              | `$MEMORY_DIR/logs`        |
-| `OPENCODE_PATH`    | Path to opencode binary (scheduler) | `opencode`                |
-| `OPENCODE_PROJECT` | Project directory (scheduler)       | Current working directory |
+| Variable     | Purpose                        | Default                   |
+| ------------ | ------------------------------ | ------------------------- |
+| `MEMORY_DIR` | Root directory for memory repo | Current working directory |
 
 ## File Structure Reference
 
