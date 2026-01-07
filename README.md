@@ -125,7 +125,7 @@ innie-memory/                   # Separate repo (private)
 
 1. **Immediate context** – State files loaded each invocation (via `instructions` in opencode.json)
 2. **Session memory** – OpenCode's built-in conversation history
-3. **Persistent memory** – Journal and summaries via MCP (`@mk.gg/innie-memory`)
+3. **Persistent memory** – Journal and summaries via MCP (`@innie-ai/memory`)
 4. **Retrieval** – Semantic search over history (local embeddings via Transformers.js)
 5. **Scheduling** – Reminders and ambient triggers via scheduler daemon
 
@@ -150,13 +150,13 @@ The hooks plugin (`plugins/hooks/`) provides automatic memory integration:
 
 | Package | Description |
 |---------|-------------|
-| `@mk.gg/innie-memory` | MCP server for journaling and semantic search (local embeddings via Transformers.js) |
-| `@mk.gg/innie-calendar` | MCP server using AppleScript to query Calendar.app |
-| `@mk.gg/innie-scheduler` | Daemon for scheduled triggers – watches `schedule.json` and spawns opencode |
+| `@innie-ai/memory` | MCP server for journaling and semantic search (local embeddings via Transformers.js) |
+| `@innie-ai/calendar` | MCP server using AppleScript to query Calendar.app |
+| `@innie-ai/scheduler` | Daemon for scheduled triggers – watches `schedule.json` and spawns opencode |
 
 ## Scheduler Daemon
 
-The scheduler (`@mk.gg/innie-scheduler`) runs as a persistent daemon managed by launchd. It watches `schedule.json` in `MEMORY_DIR` and spawns opencode when events fire.
+The scheduler (`@innie-ai/scheduler`) runs as a persistent daemon managed by launchd. It watches `schedule.json` in `MEMORY_DIR` and spawns opencode when events fire.
 
 **Architecture:**
 

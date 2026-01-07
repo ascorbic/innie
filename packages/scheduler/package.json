@@ -1,5 +1,5 @@
 {
-  "name": "@mk.gg/innie-scheduler",
+  "name": "@innie-ai/scheduler",
   "version": "1.0.0",
   "description": "Scheduler daemon for Innie - watches schedule.json and triggers opencode",
   "type": "module",
