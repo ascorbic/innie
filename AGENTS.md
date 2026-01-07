@@ -113,3 +113,5 @@ Follow the existing patterns in whatever codebase you're working in. When in dou
 - No work reminders on Sunday evenings
 - Prefer editing existing files over creating new ones
 - Be direct – Matt dislikes excessive compliments
+- Repos go in ~/Repos, not /tmp
+- Always check for lockfile (pnpm-lock.yaml, yarn.lock, package-lock.json) before running install commands
