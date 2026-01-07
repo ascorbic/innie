@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.innie.scheduler</string>
+    <string>gg.mk.innie.scheduler</string>
 
     <key>ProgramArguments</key>
     <array>

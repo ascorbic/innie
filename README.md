@@ -98,11 +98,13 @@ innie/                          # This repo (public)
 ├── AGENTS.md                   # Agent identity and instructions
 ├── opencode.json               # OpenCode configuration
 ├── packages/
-│   └── memory/                 # MCP server for journaling + semantic search
+│   ├── memory/                 # MCP server for journaling + semantic search
+│   ├── calendar/               # MCP server for Calendar.app via AppleScript
+│   └── scheduler/              # Daemon for scheduled triggers
 ├── plugins/
 │   └── hooks/                  # OpenCode hooks for memory integration
 └── .opencode/
-    └── skill/                  # Agent skills
+    └── skill/                  # Agent skills (end-of-day, alerts, etc.)
 
 innie-memory/                   # Separate repo (private)
 ├── state/                      # Git-tracked working memory
@@ -123,8 +125,9 @@ innie-memory/                   # Separate repo (private)
 
 1. **Immediate context** – State files loaded each invocation (via `instructions` in opencode.json)
 2. **Session memory** – OpenCode's built-in conversation history
-3. **Persistent memory** – Journal and summaries via MCP (`@innie-ai/memory`)
+3. **Persistent memory** – Journal and summaries via MCP (`@mk.gg/innie-memory`)
 4. **Retrieval** – Semantic search over history (local embeddings via Transformers.js)
+5. **Scheduling** – Reminders and ambient triggers via scheduler daemon
 
 ## Hooks
 
@@ -141,10 +144,55 @@ The hooks plugin (`plugins/hooks/`) provides automatic memory integration:
 | `weekly-reflection` | Pattern recognition and hygiene |
 | `memory-maintenance` | Prune state files within size limits |
 | `calendar-prep` | Prepare for upcoming meetings |
+| `alerts` | Send notifications via AppleScript (banner, modal dialog, text-to-speech) |
 
 ## Packages
 
-- **`@innie-ai/memory`** – MCP server for journaling and semantic search
+| Package | Description |
+|---------|-------------|
+| `@mk.gg/innie-memory` | MCP server for journaling and semantic search (local embeddings via Transformers.js) |
+| `@mk.gg/innie-calendar` | MCP server using AppleScript to query Calendar.app |
+| `@mk.gg/innie-scheduler` | Daemon for scheduled triggers – watches `schedule.json` and spawns opencode |
+
+## Scheduler Daemon
+
+The scheduler (`@mk.gg/innie-scheduler`) runs as a persistent daemon managed by launchd. It watches `schedule.json` in `MEMORY_DIR` and spawns opencode when events fire.
+
+**Architecture:**
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Scheduler Daemon (launchd-managed)                 │
+│  • node-schedule for cron parsing                   │
+│  • Watches MEMORY_DIR/schedule.json                 │
+│  • On trigger: spawns `opencode "...payload..."`    │
+└─────────────────────────────────────────────────────┘
+           ↑ reads
+           │
+┌──────────────────────────────────────┐
+│  schedule.json                       │
+│  • Cron reminders                    │
+│  • One-shot events                   │
+│  • Written by memory MCP tools       │
+└──────────────────────────────────────┘
+```
+
+**Setup:**
+
+```bash
+# Build the scheduler
+cd packages/scheduler && pnpm build
+
+# Install the launchd plist
+cp gg.mk.innie.scheduler.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/gg.mk.innie.scheduler.plist
+```
+
+The memory MCP provides tools to manage the schedule:
+- `schedule_reminder` – Recurring cron-based reminder
+- `schedule_once` – One-shot event at a specific time
+- `list_reminders` – Show all scheduled events
+- `remove_reminder` – Delete a scheduled event
 
 ## Environment Variables
 
