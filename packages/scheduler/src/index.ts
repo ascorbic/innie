@@ -165,7 +165,16 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
     return;
   }
 
-  const payload = `[Scheduled reminder: ${reminder.description}]\n\n${reminder.payload}`;
+  const now = new Date().toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  const payload = `[Scheduled reminder: ${reminder.description}]\nCurrent time: ${now}\n\n${reminder.payload}`;
 
   try {
     const sessionId = await getOrCreateSession();
