@@ -22,6 +22,7 @@ Get calendar events for the next 24-48 hours. Focus on:
 - Any event with external attendees
 
 Skip:
+
 - Declined events
 - All-day events (unless they're deadlines)
 - Recurring standups (unless there's a specific agenda)
@@ -30,14 +31,14 @@ Skip:
 
 For each relevant event, determine:
 
-| Category | Prep needed |
-|----------|-------------|
-| **1:1 internal** | Check for context in people file, recent interactions |
-| **1:1 external** | Research attendee, create/update people file, prepare briefing |
-| **Team meeting** | Review agenda if available, check for action items from last time |
+| Category             | Prep needed                                                            |
+| -------------------- | ---------------------------------------------------------------------- |
+| **1:1 internal**     | Check for context in people file, recent interactions                  |
+| **1:1 external**     | Research attendee, create/update people file, prepare briefing         |
+| **Team meeting**     | Review agenda if available, check for action items from last time      |
 | **External meeting** | Research company/attendees, prepare briefing, check for shared context |
-| **Interview** | Research candidate thoroughly, prepare questions |
-| **Presentation** | Ensure materials ready, rehearsal notes |
+| **Interview**        | Research candidate thoroughly, prepare questions                       |
+| **Presentation**     | Ensure materials ready, rehearsal notes                                |
 
 ### 3. Research external attendees
 
@@ -70,6 +71,7 @@ Only create a meeting folder when the meeting needs artifacts (briefings, prep d
 **Structure:** `state/meetings/[date]-[meeting-slug]/`
 
 Create a folder when:
+
 - External meeting requiring research
 - Interview
 - Important presentation
@@ -77,6 +79,7 @@ Create a folder when:
 - Any meeting where you'll want to capture notes
 
 **Don't create a folder for:**
+
 - Regular standups
 - Quick syncs
 - Routine 1:1s (unless there's something specific to prep)
@@ -101,26 +104,61 @@ attendees:
 type: external
 status: upcoming
 ---
+
 # [Meeting name]
 
 ## Context
+
 [Why this meeting is happening, what we hope to achieve]
 
 ## About [External person/company]
+
 [Key facts from research]
 
 ## Talking points
+
 - [Point 1]
 - [Point 2]
 
 ## Questions to ask
+
 - [Question 1]
 - [Question 2]
 ```
 
 The frontmatter enables queries like "find all upcoming external meetings" or "meetings with Alice in the last month".
 
-### 6. Update today.md
+### 6. Schedule meeting reminders
+
+For each meeting today that involves a call (has a Zoom/Meet/Teams link, or location indicates video call):
+
+1. First check existing reminders with `list_reminders`
+2. Skip if a reminder for this meeting already exists
+3. Schedule a one-shot reminder 1 minute before the meeting start time
+
+```bash
+# Use schedule_once with meeting ID or slug
+schedule_once(
+  id: "meeting-[event-slug]",
+  datetime: "[meeting-start-minus-1-min-ISO]",
+  description: "Meeting reminder: [meeting title]",
+  payload: "Show a modal alert: '[meeting title]' starts in 1 minute. [Include Zoom/Meet link if available]"
+)
+```
+
+Indicators a meeting has a call:
+
+- Location contains "zoom", "meet.google", "teams.microsoft"
+- Description contains video conferencing links
+- Event title mentions "call" or "sync"
+
+Skip reminders for:
+
+- All-day events
+- In-person meetings (office room locations)
+- Meetings that already have a reminder scheduled
+
+### 7. Update today.md
 
 Add calendar-related items to today's priorities:
 
@@ -140,15 +178,19 @@ role: Product Manager
 relationship: external
 last_contact: 2026-01-07
 ---
+
 # Alice Smith
 
 ## Context
+
 [How we know them, relationship context]
 
 ## Notes
+
 [Key things to remember - communication style, interests, previous discussions]
 
 ## Interactions
+
 - 2026-01-07: [Brief note on interaction]
 ```
 
@@ -162,4 +204,5 @@ After completing the workflow, summarize:
 - Prep tasks added to today.md
 - New people files created
 - Meeting folders created (with paths)
+- Meeting reminders scheduled (with times)
 - Gaps (events you couldn't fully prep for and why)
