@@ -37,7 +37,7 @@ The Innie can work in any repository while maintaining its memory. Add this to y
 
 For global configuration, create files in `~/.config/opencode/`:
 
-**`~/.config/opencode/opencode.json`** – MCP servers, skills, and settings for all repos:
+**`~/.config/opencode/opencode.json`** – MCP servers and settings for all repos:
 
 ```json
 {
@@ -49,9 +49,15 @@ For global configuration, create files in `~/.config/opencode/`:
         "MEMORY_DIR": "/path/to/innie-memory"
       }
     }
-  },
-  "skills": ["/path/to/innie/.opencode/skill/end-of-day.md"]
+  }
 }
+```
+
+**`~/.config/opencode/skill/`** – Copy skills here to make them available globally:
+
+```bash
+mkdir -p ~/.config/opencode/skill
+cp /path/to/innie/.opencode/skill/*.md ~/.config/opencode/skill/
 ```
 
 **`~/.config/opencode/AGENTS.md`** – Identity instructions for all repos:

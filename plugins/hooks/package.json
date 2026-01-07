@@ -16,7 +16,7 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@innie/memory": "workspace:*"
+    "@innie-ai/memory": "workspace:*"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",

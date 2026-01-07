@@ -13,7 +13,7 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { basename, relative } from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { indexFile, type MemoryItemType } from "@innie/memory/indexer";
+import { indexFile, type MemoryItemType } from "@innie-ai/memory/indexer";
 
 const execAsync = promisify(exec);
 

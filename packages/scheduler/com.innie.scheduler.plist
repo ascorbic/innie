@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.innie.scheduler</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/node</string>
+        <string>/Users/matt/Repos/innie/packages/scheduler/dist/index.mjs</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>MEMORY_DIR</key>
+        <string>/Users/matt/Repos/innie-memory</string>
+        <key>OPENCODE_PATH</key>
+        <string>/opt/homebrew/bin/opencode</string>
+        <key>OPENCODE_PROJECT</key>
+        <string>/Users/matt/Repos/innie</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/matt/Repos/innie-memory/logs/scheduler.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/matt/Repos/innie-memory/logs/scheduler.error.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/matt/Repos/innie</string>
+</dict>
+</plist>

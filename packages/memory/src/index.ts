@@ -30,6 +30,12 @@ import {
   indexFile,
   type MemoryItemType,
 } from "./indexer.js";
+import {
+  addCronReminder,
+  addOnceReminder,
+  removeReminder,
+  listReminders,
+} from "./scheduler.js";
 
 const server = new Server(
   {
@@ -201,6 +207,83 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["path", "content", "type"],
       },
     },
+    // Scheduling tools
+    {
+      name: "schedule_reminder",
+      description:
+        "Schedule a recurring reminder using cron syntax. Examples: '0 9 * * *' = 9am daily, '0 */2 * * *' = every 2 hours",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "Unique reminder identifier",
+          },
+          cronExpression: {
+            type: "string",
+            description: "Cron expression (e.g., '0 9 * * *' for 9am daily)",
+          },
+          description: {
+            type: "string",
+            description: "What this reminder is for",
+          },
+          payload: {
+            type: "string",
+            description: "Message to process when reminder fires",
+          },
+        },
+        required: ["id", "cronExpression", "description", "payload"],
+      },
+    },
+    {
+      name: "schedule_once",
+      description:
+        "Schedule a one-shot reminder at a specific date/time. The reminder fires once and is automatically removed.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "Unique reminder identifier",
+          },
+          datetime: {
+            type: "string",
+            description: "ISO 8601 datetime (e.g., '2026-01-06T10:00:00')",
+          },
+          description: {
+            type: "string",
+            description: "What this reminder is for",
+          },
+          payload: {
+            type: "string",
+            description: "Message to process when reminder fires",
+          },
+        },
+        required: ["id", "datetime", "description", "payload"],
+      },
+    },
+    {
+      name: "remove_reminder",
+      description: "Remove a scheduled reminder",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "Reminder ID to remove",
+          },
+        },
+        required: ["id"],
+      },
+    },
+    {
+      name: "list_reminders",
+      description: "List all scheduled reminders",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    },
   ],
 }));
 
@@ -360,6 +443,81 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               text: `Indexed ${result.itemCount} sections from ${path}`,
             },
           ],
+        };
+      }
+
+      // Scheduling tools
+      case "schedule_reminder": {
+        const { id, cronExpression, description, payload } = args as {
+          id: string;
+          cronExpression: string;
+          description: string;
+          payload: string;
+        };
+        const reminder = await addCronReminder(id, cronExpression, description, payload);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Reminder scheduled: "${description}" (${cronExpression})`,
+            },
+          ],
+        };
+      }
+
+      case "schedule_once": {
+        const { id, datetime, description, payload } = args as {
+          id: string;
+          datetime: string;
+          description: string;
+          payload: string;
+        };
+        const reminder = await addOnceReminder(id, datetime, description, payload);
+        const date = new Date(datetime);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `One-time reminder scheduled: "${description}" at ${date.toLocaleString("en-GB")}`,
+            },
+          ],
+        };
+      }
+
+      case "remove_reminder": {
+        const { id } = args as { id: string };
+        const removed = await removeReminder(id);
+        return {
+          content: [
+            {
+              type: "text",
+              text: removed ? `Reminder "${id}" removed` : `Reminder "${id}" not found`,
+            },
+          ],
+        };
+      }
+
+      case "list_reminders": {
+        const reminders = await listReminders();
+        if (reminders.length === 0) {
+          return {
+            content: [{ type: "text", text: "(no scheduled reminders)" }],
+          };
+        }
+        const formatted = reminders
+          .map((r) => {
+            const scheduleInfo =
+              r.type === "cron"
+                ? `Cron: ${r.schedule}`
+                : `Once: ${new Date(r.schedule).toLocaleString("en-GB")}`;
+            const lastRun = r.lastRun
+              ? `Last run: ${new Date(r.lastRun).toLocaleString("en-GB")}`
+              : "Never run";
+            return `**${r.id}**: ${r.description}\n  ${scheduleInfo} | ${lastRun}`;
+          })
+          .join("\n\n");
+        return {
+          content: [{ type: "text", text: formatted }],
         };
       }
 

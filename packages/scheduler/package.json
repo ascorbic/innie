@@ -1,0 +1,34 @@
+{
+  "name": "@innie-ai/scheduler",
+  "version": "1.0.0",
+  "description": "Scheduler daemon for Innie - watches schedule.json and triggers opencode",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "bin": "dist/index.mjs",
+  "files": ["dist"],
+  "exports": {
+    ".": "./dist/index.mjs"
+  },
+  "scripts": {
+    "build": "tsdown src/*.ts --format esm --dts --clean",
+    "dev": "tsdown src/*.ts --format esm --dts --watch",
+    "start": "node dist/index.mjs",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "node-schedule": "^2.1.1"
+  },
+  "devDependencies": {
+    "@types/node-schedule": "^2.1.7",
+    "tsdown": "^0.18.4",
+    "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+github.com:ascorbic/innie.git",
+    "directory": "packages/scheduler"
+  },
+  "homepage": "https://github.com/ascorbic/innie",
+  "author": "Matt Kane",
+  "license": "MIT"
+}
