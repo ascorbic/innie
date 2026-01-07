@@ -7,11 +7,10 @@
  *
  * Environment variables:
  * - MEMORY_DIR: Path to memory directory (default: ~/.innie)
- * - OPENCODE_PATH: Path to opencode binary (default: opencode)
- * - OPENCODE_PROJECT: Project directory for opencode (default: cwd)
+ * - OPENCODE_HOST: OpenCode server host (default: 127.0.0.1)
+ * - OPENCODE_PORT: OpenCode server port (default: 4097)
  */
 
-import { spawn } from "node:child_process";
 import { watch, existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -20,8 +19,9 @@ import schedule from "node-schedule";
 const MEMORY_DIR =
   process.env.MEMORY_DIR || path.join(process.env.HOME || "", ".innie");
 const SCHEDULE_FILE = path.join(MEMORY_DIR, "schedule.json");
-const OPENCODE_PATH = process.env.OPENCODE_PATH || "opencode";
-const OPENCODE_PROJECT = process.env.OPENCODE_PROJECT || process.cwd();
+const OPENCODE_HOST = process.env.OPENCODE_HOST || "127.0.0.1";
+const OPENCODE_PORT = process.env.OPENCODE_PORT || "4096";
+const OPENCODE_URL = `http://${OPENCODE_HOST}:${OPENCODE_PORT}`;
 
 interface ScheduledReminder {
   id: string;
@@ -31,6 +31,7 @@ interface ScheduledReminder {
   payload: string;
   createdAt: string;
   lastRun?: string;
+  model?: string;
 }
 
 interface ScheduleState {
@@ -93,47 +94,108 @@ async function removeOnceReminder(id: string): Promise<void> {
 }
 
 /**
- * Trigger opencode with a payload
+ * Check if OpenCode server is running
+ */
+async function isServerRunning(): Promise<boolean> {
+  try {
+    const res = await fetch(`${OPENCODE_URL}/global/health`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get or create a session for scheduled tasks
+ */
+async function getOrCreateSession(): Promise<string> {
+  // List existing sessions
+  const listRes = await fetch(`${OPENCODE_URL}/session`);
+  if (!listRes.ok) {
+    throw new Error(`Failed to list sessions: ${listRes.status}`);
+  }
+
+  const sessions = (await listRes.json()) as Array<{
+    id: string;
+    title?: string;
+  }>;
+
+  // Look for an existing scheduler session
+  const schedulerSession = sessions.find((s) => s.title === "Scheduler");
+  if (schedulerSession) {
+    return schedulerSession.id;
+  }
+
+  // Create a new session for scheduled tasks
+  const createRes = await fetch(`${OPENCODE_URL}/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Scheduler" }),
+  });
+
+  if (!createRes.ok) {
+    throw new Error(`Failed to create session: ${createRes.status}`);
+  }
+
+  const newSession = (await createRes.json()) as { id: string };
+  console.log(`[Scheduler] Created new session: ${newSession.id}`);
+  return newSession.id;
+}
+
+/**
+ * Trigger opencode with a payload via HTTP API
  */
 async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
   console.log(`[Scheduler] Triggering: ${reminder.description}`);
 
+  // Check if server is running
+  if (!(await isServerRunning())) {
+    console.log(`[Scheduler] OpenCode server not running, skipping trigger`);
+    return;
+  }
+
   const payload = `[Scheduled reminder: ${reminder.description}]\n\n${reminder.payload}`;
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn(OPENCODE_PATH, ["run", payload], {
-      cwd: OPENCODE_PROJECT,
-      stdio: "inherit",
-      env: {
-        ...process.env,
-        MEMORY_DIR,
+  try {
+    const sessionId = await getOrCreateSession();
+
+    // Send message asynchronously (don't wait for response)
+    const body: Record<string, unknown> = {
+      parts: [{ type: "text", text: payload }],
+    };
+    if (reminder.model) {
+      body.model = reminder.model;
+    }
+    
+    const res = await fetch(
+      `${OPENCODE_URL}/session/${sessionId}/prompt_async`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       },
-    });
+    );
 
-    proc.on("close", async (code) => {
-      if (code === 0) {
-        console.log(`[Scheduler] Completed: ${reminder.description}`);
-        await markReminderRun(reminder.id);
+    if (res.ok) {
+      console.log(
+        `[Scheduler] Sent to session ${sessionId}: ${reminder.description}`,
+      );
+      await markReminderRun(reminder.id);
 
-        // Remove one-shot reminders after they fire
-        if (reminder.type === "once") {
-          await removeOnceReminder(reminder.id);
-          activeJobs.get(reminder.id)?.cancel();
-          activeJobs.delete(reminder.id);
-        }
-      } else {
-        console.error(
-          `[Scheduler] Failed with code ${code}: ${reminder.description}`,
-        );
+      // Remove one-shot reminders after they fire
+      if (reminder.type === "once") {
+        await removeOnceReminder(reminder.id);
+        activeJobs.get(reminder.id)?.cancel();
+        activeJobs.delete(reminder.id);
       }
-      resolve();
-    });
-
-    proc.on("error", (error) => {
-      console.error(`[Scheduler] Error spawning opencode:`, error);
-      reject(error);
-    });
-  });
+    } else {
+      console.error(
+        `[Scheduler] Failed to send: ${res.status} ${res.statusText}`,
+      );
+    }
+  } catch (error) {
+    console.error(`[Scheduler] Error triggering opencode:`, error);
+  }
 }
 
 /**
@@ -241,8 +303,7 @@ function watchScheduleFile(): void {
 async function main(): Promise<void> {
   console.log("[Scheduler] Starting...");
   console.log(`[Scheduler] MEMORY_DIR: ${MEMORY_DIR}`);
-  console.log(`[Scheduler] OPENCODE_PATH: ${OPENCODE_PATH}`);
-  console.log(`[Scheduler] OPENCODE_PROJECT: ${OPENCODE_PROJECT}`);
+  console.log(`[Scheduler] OPENCODE_URL: ${OPENCODE_URL}`);
 
   // Initial sync
   await syncSchedule();
