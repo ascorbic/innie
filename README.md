@@ -57,14 +57,6 @@ For global configuration, create files in `~/.config/opencode/`:
     }
   },
   "permission": {
-    "read": {
-      "*": "allow",
-      "/path/to/innie-memory/**": "allow"
-    },
-    "edit": {
-      "*": "allow",
-      "/path/to/innie-memory/**": "allow"
-    },
     "external_directory": {
       "*": "ask",
       "/path/to/innie-memory/**": "allow"
