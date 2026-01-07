@@ -2,8 +2,6 @@
 
 A stateful coding agent for [OpenCode](https://opencode.ai). Maintains memory across sessions via git-tracked state files and can work autonomously on scheduled tasks.
 
-Based on [Strix](https://timkellogg.me/blog/2025/12/15/strix) and [Acme](https://github.com/ascorbic/acme).
-
 ## Quick Start
 
 ```bash

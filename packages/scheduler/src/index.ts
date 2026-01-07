@@ -46,6 +46,17 @@ const activeJobs = new Map<string, schedule.Job>();
 let currentVersion = 0;
 
 /**
+ * Log with ISO timestamp
+ */
+function log(message: string): void {
+  console.log(`[${new Date().toISOString()}] ${message}`);
+}
+
+function logError(message: string, error?: unknown): void {
+  console.error(`[${new Date().toISOString()}] ${message}`, error ?? "");
+}
+
+/**
  * Load schedule state from file
  */
 async function loadSchedule(): Promise<ScheduleState> {
@@ -56,7 +67,7 @@ async function loadSchedule(): Promise<ScheduleState> {
     const content = await readFile(SCHEDULE_FILE, "utf-8");
     return JSON.parse(content) as ScheduleState;
   } catch (error) {
-    console.error("[Scheduler] Failed to load schedule:", error);
+    logError("[Scheduler] Failed to load schedule:", error);
     return { reminders: [], version: 0 };
   }
 }
@@ -138,7 +149,7 @@ async function getOrCreateSession(): Promise<string> {
   }
 
   const newSession = (await createRes.json()) as { id: string };
-  console.log(`[Scheduler] Created new session: ${newSession.id}`);
+  log(`[Scheduler] Created new session: ${newSession.id}`);
   return newSession.id;
 }
 
@@ -146,11 +157,11 @@ async function getOrCreateSession(): Promise<string> {
  * Trigger opencode with a payload via HTTP API
  */
 async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
-  console.log(`[Scheduler] Triggering: ${reminder.description}`);
+  log(`[Scheduler] Triggering: ${reminder.description}`);
 
   // Check if server is running
   if (!(await isServerRunning())) {
-    console.log(`[Scheduler] OpenCode server not running, skipping trigger`);
+    log(`[Scheduler] OpenCode server not running, skipping trigger`);
     return;
   }
 
@@ -181,9 +192,7 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
     );
 
     if (res.ok) {
-      console.log(
-        `[Scheduler] Sent to session ${sessionId}: ${reminder.description}`,
-      );
+      log(`[Scheduler] Sent to session ${sessionId}: ${reminder.description}`);
       await markReminderRun(reminder.id);
 
       // Remove one-shot reminders after they fire
@@ -193,12 +202,10 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
         activeJobs.delete(reminder.id);
       }
     } else {
-      console.error(
-        `[Scheduler] Failed to send: ${res.status} ${res.statusText}`,
-      );
+      logError(`[Scheduler] Failed to send: ${res.status} ${res.statusText}`);
     }
   } catch (error) {
-    console.error(`[Scheduler] Error triggering opencode:`, error);
+    logError(`[Scheduler] Error triggering opencode:`, error);
   }
 }
 
@@ -220,9 +227,7 @@ function scheduleReminder(reminder: ScheduledReminder): void {
     // One-shot reminder
     const date = new Date(reminder.schedule);
     if (date <= new Date()) {
-      console.log(
-        `[Scheduler] Skipping past reminder: ${reminder.description}`,
-      );
+      log(`[Scheduler] Skipping past reminder: ${reminder.description}`);
       return;
     }
     job = schedule.scheduleJob(reminder.id, date, () => {
@@ -233,11 +238,11 @@ function scheduleReminder(reminder: ScheduledReminder): void {
   if (job) {
     activeJobs.set(reminder.id, job);
     const nextRun = job.nextInvocation();
-    console.log(
+    log(
       `[Scheduler] Scheduled: ${reminder.description} (next: ${nextRun?.toISOString() || "N/A"})`,
     );
   } else {
-    console.error(`[Scheduler] Failed to schedule: ${reminder.description}`);
+    logError(`[Scheduler] Failed to schedule: ${reminder.description}`);
   }
 }
 
@@ -252,7 +257,7 @@ async function syncSchedule(): Promise<void> {
     return;
   }
 
-  console.log(
+  log(
     `[Scheduler] Syncing schedule (version ${currentVersion} -> ${state.version})`,
   );
   currentVersion = state.version;
@@ -263,7 +268,7 @@ async function syncSchedule(): Promise<void> {
   // Cancel jobs for removed reminders
   for (const [id, job] of activeJobs) {
     if (!newIds.has(id)) {
-      console.log(`[Scheduler] Removing: ${id}`);
+      log(`[Scheduler] Removing: ${id}`);
       job.cancel();
       activeJobs.delete(id);
     }
@@ -280,9 +285,7 @@ async function syncSchedule(): Promise<void> {
  */
 function watchScheduleFile(): void {
   if (!existsSync(SCHEDULE_FILE)) {
-    console.log(
-      `[Scheduler] Schedule file not found, will create on first reminder`,
-    );
+    log(`[Scheduler] Schedule file not found, will create on first reminder`);
     return;
   }
 
@@ -295,19 +298,19 @@ function watchScheduleFile(): void {
   });
 
   watcher.on("error", (error) => {
-    console.error("[Scheduler] Watch error:", error);
+    logError("[Scheduler] Watch error:", error);
   });
 
-  console.log(`[Scheduler] Watching: ${SCHEDULE_FILE}`);
+  log(`[Scheduler] Watching: ${SCHEDULE_FILE}`);
 }
 
 /**
  * Main entry point
  */
 async function main(): Promise<void> {
-  console.log("[Scheduler] Starting...");
-  console.log(`[Scheduler] MEMORY_DIR: ${MEMORY_DIR}`);
-  console.log(`[Scheduler] OPENCODE_URL: ${OPENCODE_URL}`);
+  log("[Scheduler] Starting...");
+  log(`[Scheduler] MEMORY_DIR: ${MEMORY_DIR}`);
+  log(`[Scheduler] OPENCODE_URL: ${OPENCODE_URL}`);
 
   // Initial sync
   await syncSchedule();
@@ -320,11 +323,11 @@ async function main(): Promise<void> {
     syncSchedule().catch(console.error);
   }, 60 * 1000);
 
-  console.log("[Scheduler] Running. Press Ctrl+C to stop.");
+  log("[Scheduler] Running. Press Ctrl+C to stop.");
 
   // Handle graceful shutdown
   process.on("SIGINT", () => {
-    console.log("\n[Scheduler] Shutting down...");
+    log("[Scheduler] Shutting down...");
     for (const job of activeJobs.values()) {
       job.cancel();
     }
@@ -332,7 +335,7 @@ async function main(): Promise<void> {
   });
 
   process.on("SIGTERM", () => {
-    console.log("[Scheduler] Received SIGTERM, shutting down...");
+    log("[Scheduler] Received SIGTERM, shutting down...");
     for (const job of activeJobs.values()) {
       job.cancel();
     }
@@ -341,6 +344,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error("[Scheduler] Fatal error:", error);
+  logError("[Scheduler] Fatal error:", error);
   process.exit(1);
 });
