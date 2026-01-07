@@ -21,6 +21,8 @@ export interface ScheduledReminder {
   payload: string;
   createdAt: string;
   lastRun?: string;
+  /** Optional model override (e.g., "anthropic/claude-sonnet-4-20250514" for deep thinking tasks) */
+  model?: string;
 }
 
 export interface ScheduleState {
@@ -58,7 +60,8 @@ export async function addCronReminder(
   id: string,
   cronExpression: string,
   description: string,
-  payload: string
+  payload: string,
+  model?: string
 ): Promise<ScheduledReminder> {
   const state = await loadSchedule();
 
@@ -72,6 +75,7 @@ export async function addCronReminder(
     description,
     payload,
     createdAt: new Date().toISOString(),
+    ...(model && { model }),
   };
 
   state.reminders.push(reminder);
@@ -88,7 +92,8 @@ export async function addOnceReminder(
   id: string,
   datetime: string,
   description: string,
-  payload: string
+  payload: string,
+  model?: string
 ): Promise<ScheduledReminder> {
   const state = await loadSchedule();
 
@@ -102,6 +107,7 @@ export async function addOnceReminder(
     description,
     payload,
     createdAt: new Date().toISOString(),
+    ...(model && { model }),
   };
 
   state.reminders.push(reminder);

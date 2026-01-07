@@ -231,6 +231,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             description: "Message to process when reminder fires",
           },
+          model: {
+            type: "string",
+            description: "Model to use (e.g., 'anthropic/claude-opus-4-5' for deep thinking tasks)",
+          },
         },
         required: ["id", "cronExpression", "description", "payload"],
       },
@@ -257,6 +261,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           payload: {
             type: "string",
             description: "Message to process when reminder fires",
+          },
+          model: {
+            type: "string",
+            description: "Model to use (e.g., 'anthropic/claude-opus-4-5' for deep thinking tasks)",
           },
         },
         required: ["id", "datetime", "description", "payload"],
@@ -448,37 +456,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Scheduling tools
       case "schedule_reminder": {
-        const { id, cronExpression, description, payload } = args as {
+        const { id, cronExpression, description, payload, model } = args as {
           id: string;
           cronExpression: string;
           description: string;
           payload: string;
+          model?: string;
         };
-        const reminder = await addCronReminder(id, cronExpression, description, payload);
+        const reminder = await addCronReminder(id, cronExpression, description, payload, model);
+        const modelInfo = model ? ` (model: ${model})` : "";
         return {
           content: [
             {
               type: "text",
-              text: `Reminder scheduled: "${description}" (${cronExpression})`,
+              text: `Reminder scheduled: "${description}" (${cronExpression})${modelInfo}`,
             },
           ],
         };
       }
 
       case "schedule_once": {
-        const { id, datetime, description, payload } = args as {
+        const { id, datetime, description, payload, model } = args as {
           id: string;
           datetime: string;
           description: string;
           payload: string;
+          model?: string;
         };
-        const reminder = await addOnceReminder(id, datetime, description, payload);
+        const reminder = await addOnceReminder(id, datetime, description, payload, model);
         const date = new Date(datetime);
+        const modelInfo = model ? ` (model: ${model})` : "";
         return {
           content: [
             {
               type: "text",
-              text: `One-time reminder scheduled: "${description}" at ${date.toLocaleString("en-GB")}`,
+              text: `One-time reminder scheduled: "${description}" at ${date.toLocaleString("en-GB")}${modelInfo}`,
             },
           ],
         };
