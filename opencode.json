@@ -8,10 +8,9 @@
   "mcp": {
     "memory": {
       "type": "local",
-      "command": ["pnpm", "--filter", "@innie-ai/memory", "start"],
+      "command": ["npx", "/Users/matt/Repos/innie/packages/memory"],
       "environment": {
-        "INNIE_STATE_PATH": "${workspaceFolder}/state",
-        "INNIE_LOGS_PATH": "${workspaceFolder}/logs"
+        "MEMORY_DIR": "/Users/matt/Repos/innie"
       }
     }
   },
