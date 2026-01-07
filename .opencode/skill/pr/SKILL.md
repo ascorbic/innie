@@ -9,7 +9,7 @@ Follow this workflow when contributing changes to any repository.
 
 ## Never Push Directly to Main
 
-Always create a branch and PR, even for small changes. This applies to:
+Always create a branch and PR, even for small changes, unless specifically told otherwise. This applies to:
 
 - Matt's own repos
 - Open source contributions
@@ -99,13 +99,25 @@ Commit the changeset file with your other changes.
 - `fix:` → patch bump
 - `docs:`, `chore:`, `refactor:` → usually no changeset needed
 
-### 4. Push the branch
+### 4. Run tests
+
+Before pushing, run tests to catch issues early:
+
+```bash
+pnpm test
+# or
+npm test
+```
+
+Fix any failing tests. If your change affects existing tests, update them.
+
+### 5. Push the branch
 
 ```bash
 git push -u origin feat/my-feature
 ```
 
-### 5. Create PR with gh CLI
+### 6. Create PR with gh CLI
 
 ```bash
 gh pr create --title "feat: add OpenCode detection" --body "$(cat <<'EOF'
@@ -121,7 +133,7 @@ EOF
 )"
 ```
 
-### 6. After PR is merged
+### 7. After PR is merged
 
 ```bash
 git checkout main
