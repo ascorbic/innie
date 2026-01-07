@@ -13,9 +13,12 @@
 	"author": "Matt Kane",
 	"license": "MIT",
 	"devDependencies": {
-		"@types/node": "^24.10.4",
+		"@types/node": "^25.0.3",
 		"prettier": "^3.7.4",
-		"vitest": "^3.2.4"
+		"vitest": "^4.0.16"
 	},
-	"packageManager": "pnpm@10.27.0"
+	"packageManager": "pnpm@10.27.0",
+	"pnpm": {
+		"onlyBuiltDependencies": ["esbuild", "protobufjs", "sharp"]
+	}
 }

@@ -3,17 +3,19 @@
   "version": "1.0.0",
   "description": "Memory MCP server for semantic search and journaling",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/index.mjs",
+  "bin": "dist/index.mjs",
   "files": ["dist"],
   "exports": {
-    ".": "./dist/index.js",
-    "./embeddings": "./dist/embeddings.js",
-    "./indexer": "./dist/indexer.js",
-    "./journal": "./dist/journal.js"
+    ".": "./dist/index.mjs",
+    "./embeddings": "./dist/embeddings.mjs",
+    "./indexer": "./dist/indexer.mjs",
+    "./journal": "./dist/journal.mjs"
   },
   "scripts": {
     "build": "tsdown src/*.ts --format esm --dts --clean",
     "dev": "tsdown src/*.ts --format esm --dts --watch",
+    "start": "node dist/index.mjs",
     "prepublishOnly": "pnpm run build",
     "check": "publint && attw --pack --ignore-rules=cjs-resolves-to-esm",
     "test": "vitest"

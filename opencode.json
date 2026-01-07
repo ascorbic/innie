@@ -8,16 +8,12 @@
   "mcp": {
     "memory": {
       "type": "local",
-      "command": ["node", "packages/memory/dist/index.js"],
-      "env": {
+      "command": ["pnpm", "--filter", "@innie/memory"],
+      "environment": {
         "INNIE_STATE_PATH": "${workspaceFolder}/state",
         "INNIE_LOGS_PATH": "${workspaceFolder}/logs"
       }
     }
   },
-  "plugins": {
-    "hooks": {
-      "module": "./plugins/hooks/dist/index.js"
-    }
-  }
+  "plugin": ["./plugins/hooks/dist/index.js"]
 }

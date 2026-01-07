@@ -10,16 +10,8 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin";
-import { readFile } from "node:fs/promises";
 import { basename, relative } from "node:path";
 import { indexFile, type MemoryItemType } from "@innie/memory/indexer";
-
-// Files critical for compaction context (always preserve)
-const COMPACTION_CRITICAL_FILES = [
-  "state/today.md",
-  "state/inbox.md",
-  "state/commitments.md",
-];
 
 // Patterns for content type detection
 const PEOPLE_PATTERN = /^state\/people\/.*\.md$/;
@@ -81,47 +73,19 @@ export const InnieHooksPlugin: Plugin = async (_ctx) => {
     },
 
     /**
-     * experimental.session.compacting hook: Preserve state during compaction
+     * experimental.session.compacting hook: Trigger summary on compaction
      *
-     * When OpenCode compacts the context (at ~90% capacity), this hook:
-     * 1. Injects the critical state files so they survive compaction
-     * 2. Instructs the model to save the conversation summary using log_journal
+     * When OpenCode compacts the context (at ~90% capacity), this hook
+     * instructs the model to save a conversation summary using log_journal.
      *
-     * Without this, the agent would lose track of today/inbox/commitments.
+     * Note: State files (today, inbox, commitments) are already preserved
+     * via the `instructions` array in opencode.json - they're part of the
+     * system prompt which survives compaction.
      */
     "experimental.session.compacting": async (_input, output) => {
-      console.error("[Hooks] Preserving state during compaction");
+      console.error("[Hooks] Injecting post-compaction summary instruction");
 
-      const stateContext: string[] = [];
-
-      // Read each critical file
-      for (const filePath of COMPACTION_CRITICAL_FILES) {
-        try {
-          const content = await readFile(filePath, "utf-8");
-          if (content.trim()) {
-            const name = basename(filePath, ".md");
-            stateContext.push(`### ${name}\n${content}`);
-          }
-        } catch {
-          // File might not exist yet
-        }
-      }
-
-      // Build the compaction context with instruction
-      const contextParts: string[] = [];
-
-      // Add state files
-      if (stateContext.length > 0) {
-        contextParts.push(`## Critical State (preserved across compaction)
-
-${stateContext.join("\n\n")}`);
-        console.error(
-          `[Hooks] Injected ${stateContext.length} state files into compaction context`
-        );
-      }
-
-      // Add instruction to save summary
-      contextParts.push(`## Post-Compaction Task
+      output.context.push(`## Post-Compaction Task
 
 **IMPORTANT:** After this compaction completes, use the \`log_journal\` tool to save a summary of what was discussed and accomplished in this session. Include:
 - Key decisions made
@@ -130,8 +94,6 @@ ${stateContext.join("\n\n")}`);
 - Any open threads to follow up on
 
 This ensures continuity across context compactions.`);
-
-      output.context.push(contextParts.join("\n\n"));
     },
   };
 };
