@@ -35,7 +35,26 @@ The Innie can work in any repository while maintaining its memory. Add this to y
 }
 ```
 
-For global identity (optional), create `~/.config/opencode/AGENTS.md`:
+For global configuration, create files in `~/.config/opencode/`:
+
+**`~/.config/opencode/opencode.json`** – MCP servers, skills, and settings for all repos:
+
+```json
+{
+  "mcp": {
+    "memory": {
+      "type": "local",
+      "command": ["npx", "/path/to/innie/packages/memory"],
+      "environment": {
+        "MEMORY_DIR": "/path/to/innie-memory"
+      }
+    }
+  },
+  "skills": ["/path/to/innie/.opencode/skill/end-of-day.md"]
+}
+```
+
+**`~/.config/opencode/AGENTS.md`** – Identity instructions for all repos:
 
 ```markdown
 # Identity
@@ -49,6 +68,8 @@ Use your memory tools to:
 
 Defer to project-level AGENTS.md for coding conventions.
 ```
+
+Global config merges with project-level config. Project settings take precedence.
 
 ## Repository Structure
 
