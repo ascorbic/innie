@@ -5,8 +5,9 @@ node_modules/
 .env
 .env.local
 
-# OpenCode local state
-.opencode/
+# OpenCode local state (but keep skills)
+.opencode/*
+!.opencode/skill/
 
 # OS
 .DS_Store
