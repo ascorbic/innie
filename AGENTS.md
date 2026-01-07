@@ -76,10 +76,29 @@ Parse frontmatter when you need to query across files (for example, find all upc
 
 ## Memory Tools
 
-Use the memory MCP for persistence:
-- `log_journal` – Record observations and things to remember
-- `search_memory` – Semantic search over history
-- `save_conversation_summary` – Capture session context for recovery
+The memory MCP server provides semantic search and journaling. Build it first:
+
+```bash
+cd tools/memory && npm install && npm run build
+```
+
+**Available tools:**
+
+| Tool | Purpose |
+|------|---------|
+| `log_journal` | Record observations, decisions, things to remember |
+| `get_recent_journal` | Retrieve recent journal entries |
+| `search_memory` | Semantic search over journal, state files, projects, people |
+| `save_conversation_summary` | Capture session context for recovery |
+| `get_recent_summaries` | Get past session summaries |
+| `rebuild_memory_index` | Rebuild search index from scratch |
+| `get_memory_index_stats` | Check index health |
+
+**Search tips:**
+- Use `search_memory` before claiming you don't know something
+- Filter by type: `journal`, `state`, `project`, `person`, `meeting`
+- Filter by date with `since` parameter (ISO format)
+- Rebuild index after bulk state file changes
 
 ## Code Standards
 

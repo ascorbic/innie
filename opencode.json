@@ -4,5 +4,15 @@
     "state/today.md",
     "state/inbox.md",
     "state/commitments.md"
-  ]
+  ],
+  "mcp": {
+    "memory": {
+      "type": "local",
+      "command": ["node", "tools/memory/dist/index.js"],
+      "env": {
+        "INNIE_STATE_PATH": "${workspaceFolder}/state",
+        "INNIE_LOGS_PATH": "${workspaceFolder}/logs"
+      }
+    }
+  }
 }

@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 
+# Build output
+dist/
+*.tsbuildinfo
+
 # Environment
 .env
 .env.local
@@ -8,6 +12,9 @@ node_modules/
 # OpenCode local state (but keep skills)
 .opencode/*
 !.opencode/skill/
+
+# Memory index (auto-generated)
+state/.memory-index/
 
 # OS
 .DS_Store
