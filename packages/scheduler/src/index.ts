@@ -164,9 +164,13 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
       parts: [{ type: "text", text: payload }],
     };
     if (reminder.model) {
-      body.model = reminder.model;
+      // Model format: "provider/model-id" -> { providerID, modelID }
+      const [providerID, modelID] = reminder.model.split("/");
+      if (providerID && modelID) {
+        body.model = { providerID, modelID };
+      }
     }
-    
+
     const res = await fetch(
       `${OPENCODE_URL}/session/${sessionId}/prompt_async`,
       {
