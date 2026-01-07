@@ -19,7 +19,7 @@ Use this skill when helping someone set up Innie for the first time, or when tro
 ### 1. Clone the Innie Repository
 
 ```bash
-git clone https://github.com/your-org/innie.git
+git clone https://github.com/ascorbic/innie.git
 cd innie
 pnpm install
 pnpm build
@@ -29,6 +29,7 @@ This builds all packages:
 
 - `@innie-ai/memory` – Memory MCP server
 - `@innie-ai/scheduler` – Background reminder daemon
+- `@innie-ai/hooks` – OpenCode plugin for auto-commit and compaction hooks
 
 ### 2. Create the Memory Repository
 
@@ -136,9 +137,11 @@ Use your memory tools to:
 Defer to project-level AGENTS.md for coding conventions.
 ```
 
-### 4. Configure Project-Level Settings
+### 4. Configure Permissions for External Directory Access
 
-In the innie repository, create or update `opencode.json`:
+Innie needs to access the memory repo from any working directory. By default, OpenCode prompts when accessing paths outside the current project (`external_directory` permission). To allow seamless access to state files, add permission rules to your config.
+
+**~/.config/opencode/opencode.json** – Add permissions alongside MCP config:
 
 ```json
 {
@@ -156,24 +159,102 @@ In the innie repository, create or update `opencode.json`:
         "MEMORY_DIR": "/path/to/innie-memory"
       }
     }
+  },
+  "permission": {
+    "read": {
+      "*": "allow",
+      "/path/to/innie-memory/**": "allow"
+    },
+    "edit": {
+      "*": "allow",
+      "/path/to/innie-memory/**": "allow"
+    },
+    "external_directory": {
+      "*": "ask",
+      "/path/to/innie-memory/**": "allow"
+    }
   }
 }
 ```
 
-The `instructions` array injects state files into the system prompt so Innie sees current priorities.
+The key permission is `external_directory` – without this, scheduled tasks and sessions running from other repos will prompt for approval when accessing state files.
 
-### 5. Install the Scheduler Daemon (Optional)
+### 5. Configure Project-Level Settings
 
-The scheduler enables background reminders and scheduled tasks.
+In the innie repository, create or update `opencode.json` with the same structure:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "/path/to/innie-memory/state/today.md",
+    "/path/to/innie-memory/state/inbox.md",
+    "/path/to/innie-memory/state/commitments.md"
+  ],
+  "mcp": {
+    "memory": {
+      "type": "local",
+      "command": ["npx", "/path/to/innie/packages/memory"],
+      "environment": {
+        "MEMORY_DIR": "/path/to/innie-memory"
+      }
+    }
+  },
+  "permission": {
+    "read": {
+      "*": "allow",
+      "/path/to/innie-memory/**": "allow"
+    },
+    "edit": {
+      "*": "allow",
+      "/path/to/innie-memory/**": "allow"
+    },
+    "external_directory": {
+      "*": "ask",
+      "/path/to/innie-memory/**": "allow"
+    }
+  },
+  "plugin": ["./plugins/hooks/dist/index.mjs"]
+}
+```
+
+The `instructions` array injects state files into the system prompt so Innie sees current priorities. The `plugin` entry enables auto-commit hooks for state changes.
+
+### 6. Install the Scheduler Daemon (Optional)
+
+The scheduler enables background reminders and scheduled tasks. It watches `schedule.json` in `MEMORY_DIR` and spawns opencode when events fire.
 
 ```bash
 cd packages/scheduler
 
 # Copy the launchd plist
 cp gg.mk.innie.scheduler.plist ~/Library/LaunchAgents/
+```
 
-# Edit the plist to set correct paths
-# Update MEMORY_DIR, OPENCODE_PATH, and OPENCODE_PROJECT
+Edit the plist to set correct paths. The template contains hardcoded paths that must be updated:
+
+```xml
+<!-- Update these in ~/Library/LaunchAgents/gg.mk.innie.scheduler.plist -->
+<key>ProgramArguments</key>
+<array>
+    <string>/path/to/node</string>  <!-- e.g., ~/.nvm/versions/node/v22.x.x/bin/node -->
+    <string>/path/to/innie/packages/scheduler/dist/index.mjs</string>
+</array>
+
+<key>EnvironmentVariables</key>
+<dict>
+    <key>MEMORY_DIR</key>
+    <string>/path/to/innie-memory</string>
+</dict>
+
+<key>StandardOutPath</key>
+<string>/path/to/innie-memory/logs/scheduler.log</string>
+
+<key>StandardErrorPath</key>
+<string>/path/to/innie-memory/logs/scheduler.error.log</string>
+
+<key>WorkingDirectory</key>
+<string>/path/to/innie</string>
 ```
 
 Load the daemon:
@@ -186,6 +267,8 @@ To check status:
 
 ```bash
 launchctl list | grep innie
+# Check logs
+tail -f /path/to/innie-memory/logs/scheduler.log
 ```
 
 To unload:
@@ -194,7 +277,14 @@ To unload:
 launchctl unload ~/Library/LaunchAgents/gg.mk.innie.scheduler.plist
 ```
 
-### 6. Verify the Setup
+To reload after plist changes:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/gg.mk.innie.scheduler.plist
+launchctl load ~/Library/LaunchAgents/gg.mk.innie.scheduler.plist
+```
+
+### 7. Verify the Setup
 
 Run these checks to confirm everything works:
 
@@ -210,6 +300,7 @@ Inside the session, test:
 2. **Search**: Run `search_memory` to verify indexing
 3. **Calendar**: Run `icalBuddy eventsToday` to test calendar access
 4. **State files**: Confirm today.md, inbox.md, commitments.md appear in system prompt
+5. **Scheduler**: Use `schedule_once` to set a reminder a few minutes out, then check if it fires and can access state files
 
 ## Environment Variables
 
@@ -260,6 +351,8 @@ innie-memory/                   # Memory repo (private)
 
 **Scheduler not running**: Check logs with `log show --predicate 'subsystem == "gg.mk.innie.scheduler"' --last 1h`
 
+**Scheduled tasks can't access state files**: Add the `external_directory` permission rule to your config. Without this, OpenCode prompts for approval when accessing paths outside the current working directory.
+
 **Search returning no results**: Run `rebuild_memory_index` to regenerate the semantic index.
 
 ## Output
@@ -269,6 +362,8 @@ After walking through setup, confirm:
 - All packages built successfully
 - Memory repo created with initial state files
 - Global and project config files in place
+- Permissions configured for external directory access
 - Memory MCP server responding
 - Calendar skill working (icalBuddy)
 - State files visible in system prompt
+- Scheduled tasks can access state files without prompts

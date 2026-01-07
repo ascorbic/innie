@@ -14,5 +14,19 @@
       }
     }
   },
-  "plugin": ["./plugins/hooks/dist/index.mjs"]
+  "plugin": ["./plugins/hooks/dist/index.mjs"],
+  "permission": {
+    "read": {
+      "*": "allow",
+      "/Users/mkane/Repos/innie-memory/**": "allow"
+    },
+    "edit": {
+      "*": "allow",
+      "/Users/mkane/Repos/innie-memory/**": "allow"
+    },
+    "external_directory": {
+      "*": "ask",
+      "/Users/mkane/Repos/innie-memory/**": "allow"
+    }
+  }
 }

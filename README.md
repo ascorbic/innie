@@ -37,10 +37,16 @@ The Innie can work in any repository while maintaining its memory. Add this to y
 
 For global configuration, create files in `~/.config/opencode/`:
 
-**`~/.config/opencode/opencode.json`** – MCP servers and settings for all repos:
+**`~/.config/opencode/opencode.json`** – MCP servers, permissions, and settings for all repos:
 
 ```json
 {
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "/path/to/innie-memory/state/today.md",
+    "/path/to/innie-memory/state/inbox.md",
+    "/path/to/innie-memory/state/commitments.md"
+  ],
   "mcp": {
     "memory": {
       "type": "local",
@@ -49,9 +55,25 @@ For global configuration, create files in `~/.config/opencode/`:
         "MEMORY_DIR": "/path/to/innie-memory"
       }
     }
+  },
+  "permission": {
+    "read": {
+      "*": "allow",
+      "/path/to/innie-memory/**": "allow"
+    },
+    "edit": {
+      "*": "allow",
+      "/path/to/innie-memory/**": "allow"
+    },
+    "external_directory": {
+      "*": "ask",
+      "/path/to/innie-memory/**": "allow"
+    }
   }
 }
 ```
+
+The `external_directory` permission is critical – without it, OpenCode prompts for approval when accessing the memory repo from other working directories. This breaks scheduled tasks and cross-repo sessions.
 
 **`~/.config/opencode/skill/`** – Copy skills here to make them available globally:
 
@@ -68,6 +90,7 @@ cp /path/to/innie/.opencode/skill/*.md ~/.config/opencode/skill/
 You are Innie, a stateful coding agent. Your memory is managed via the `memory` MCP server.
 
 Use your memory tools to:
+
 - Journal important observations with `log_journal`
 - Search past context with `search_memory`
 - Save session summaries with `save_conversation_summary`
@@ -79,12 +102,13 @@ Global config merges with project-level config. Project settings take precedence
 
 ## Repository Structure
 
-| Repo | Purpose | Visibility |
-|------|---------|------------|
-| `innie` | Code, skills, plugins, MCP server | Public |
-| `innie-memory` | State files, journal, summaries | Private |
+| Repo           | Purpose                           | Visibility |
+| -------------- | --------------------------------- | ---------- |
+| `innie`        | Code, skills, plugins, MCP server | Public     |
+| `innie-memory` | State files, journal, summaries   | Private    |
 
 The memory lives in a separate private repo so:
+
 - State history is git-tracked (rollback, audit trail)
 - Sensitive context stays private
 - Code can be shared without exposing memory
@@ -138,21 +162,21 @@ The hooks plugin (`plugins/hooks/`) provides automatic memory integration:
 
 ## Skills
 
-| Skill | Purpose |
-|-------|---------|
-| `end-of-day` | Daily close-out workflow |
-| `weekly-reflection` | Pattern recognition and hygiene |
-| `memory-maintenance` | Prune state files within size limits |
-| `calendar-prep` | Prepare for upcoming meetings |
-| `alerts` | Send notifications via AppleScript (banner, modal dialog, text-to-speech) |
+| Skill                | Purpose                                                                   |
+| -------------------- | ------------------------------------------------------------------------- |
+| `end-of-day`         | Daily close-out workflow                                                  |
+| `weekly-reflection`  | Pattern recognition and hygiene                                           |
+| `memory-maintenance` | Prune state files within size limits                                      |
+| `calendar-prep`      | Prepare for upcoming meetings                                             |
+| `alerts`             | Send notifications via AppleScript (banner, modal dialog, text-to-speech) |
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `@innie-ai/memory` | MCP server for journaling and semantic search (local embeddings via Transformers.js) |
-| `@innie-ai/calendar` | MCP server using AppleScript to query Calendar.app |
-| `@innie-ai/scheduler` | Daemon for scheduled triggers – watches `schedule.json` and spawns opencode |
+| Package               | Description                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `@innie-ai/memory`    | MCP server for journaling and semantic search (local embeddings via Transformers.js) |
+| `@innie-ai/calendar`  | MCP server using AppleScript to query Calendar.app                                   |
+| `@innie-ai/scheduler` | Daemon for scheduled triggers – watches `schedule.json` and spawns opencode          |
 
 ## Scheduler Daemon
 
@@ -189,6 +213,7 @@ launchctl load ~/Library/LaunchAgents/gg.mk.innie.scheduler.plist
 ```
 
 The memory MCP provides tools to manage the schedule:
+
 - `schedule_reminder` – Recurring cron-based reminder
 - `schedule_once` – One-shot event at a specific time
 - `list_reminders` – Show all scheduled events
@@ -198,9 +223,28 @@ The memory MCP provides tools to manage the schedule:
 
 The memory MCP server uses:
 
-| Variable | Purpose | Default |
-|----------|---------|---------|
+| Variable     | Purpose                           | Default                   |
+| ------------ | --------------------------------- | ------------------------- |
 | `MEMORY_DIR` | Root directory for state and logs | Current working directory |
+
+## Permissions
+
+OpenCode's `external_directory` permission controls access to paths outside the current project. By default it prompts (`"ask"`), which blocks non-interactive scheduled tasks.
+
+Configure permissions in `opencode.json`:
+
+```json
+{
+  "permission": {
+    "external_directory": {
+      "*": "ask",
+      "/path/to/innie-memory/**": "allow"
+    }
+  }
+}
+```
+
+See the [OpenCode permissions docs](https://opencode.ai/docs/permissions/) for the full permission syntax.
 
 ## References
 
