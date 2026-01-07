@@ -5,6 +5,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# pnpm
+pnpm-lock.yaml
+
 # Environment
 .env
 .env.local

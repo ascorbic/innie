@@ -1,0 +1,21 @@
+{
+	"name": "@innie/workspace",
+	"private": true,
+	"version": "1.0.0",
+	"description": "Work Innie - Stateful agent for work context",
+	"scripts": {
+		"check": "pnpm run --filter @innie/* check",
+		"test": "pnpm run --filter @innie/* test",
+		"build": "pnpm run --filter @innie/* build",
+		"format": "prettier --write ."
+	},
+	"keywords": [],
+	"author": "Matt Kane",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^24.10.4",
+		"prettier": "^3.7.4",
+		"vitest": "^3.2.4"
+	},
+	"packageManager": "pnpm@10.27.0"
+}

@@ -27,6 +27,7 @@ import {
   rebuildIndex,
   getIndexStats,
   indexJournalEntry,
+  indexFile,
   type MemoryItemType,
 } from "./indexer.js";
 
@@ -176,6 +177,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {},
       },
     },
+    {
+      name: "index_file",
+      description:
+        "Index a file for semantic search. Called by hooks when state files change.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "File path",
+          },
+          content: {
+            type: "string",
+            description: "File content",
+          },
+          type: {
+            type: "string",
+            enum: ["state", "project", "person", "meeting"],
+            description: "Content type",
+          },
+        },
+        required: ["path", "content", "type"],
+      },
+    },
   ],
 }));
 
@@ -316,6 +341,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: "text",
               text: `Index contains ${stats.itemCount} items.`,
+            },
+          ],
+        };
+      }
+
+      case "index_file": {
+        const { path, content, type } = args as {
+          path: string;
+          content: string;
+          type: "state" | "project" | "person" | "meeting";
+        };
+        const result = await indexFile(path, content, type);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Indexed ${result.itemCount} sections from ${path}`,
             },
           ],
         };

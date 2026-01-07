@@ -348,3 +348,59 @@ export async function getIndexStats(): Promise<{ itemCount: number }> {
   const items = await idx.listItems();
   return { itemCount: items.length };
 }
+
+/**
+ * Index a file directly (for incremental updates from hooks)
+ *
+ * Called by the file.edited hook when state files are modified.
+ * Parses the file and updates all its items in the index.
+ */
+export async function indexFile(
+  filePath: string,
+  content: string,
+  type: MemoryItemType
+): Promise<{ itemCount: number }> {
+  const filename = filePath.split("/").pop() || filePath;
+  console.error(`[Memory] Indexing file: ${filename} (${type})`);
+
+  // Parse file into sections
+  const sections = content.split(/^## /m);
+  const items: MemoryItem[] = [];
+
+  // First section (before any ##) is the preamble
+  if (sections[0]?.trim()) {
+    items.push({
+      id: `${type}-${filename}-preamble`,
+      type,
+      content: sections[0].trim(),
+      source: filePath,
+      section: "preamble",
+    });
+  }
+
+  // Each subsequent section
+  for (let i = 1; i < sections.length; i++) {
+    const section = sections[i];
+    if (!section) continue;
+    const firstLine = section.split("\n")[0] || "";
+    const sectionTitle = firstLine.trim();
+    const sectionContent = section.slice(firstLine.length).trim();
+
+    if (sectionContent) {
+      items.push({
+        id: `${type}-${filename}-${i}`,
+        type,
+        content: `## ${sectionTitle}\n\n${sectionContent}`,
+        source: filePath,
+        section: sectionTitle,
+      });
+    }
+  }
+
+  // Index all items (upsert will update existing)
+  if (items.length > 0) {
+    await indexItems(items);
+  }
+
+  return { itemCount: items.length };
+}
