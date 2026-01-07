@@ -1,6 +1,6 @@
 ---
 name: memory-maintenance
-description: Prune and consolidate state files to stay within size limits and maintain quality
+description: Prune and consolidate state files, surface important items from journal to core state
 ---
 
 # Memory Maintenance
@@ -11,12 +11,12 @@ Run this when state files are getting bloated or context feels cluttered. Can be
 
 These are the target limits for state files:
 
-| File | Target | Hard limit |
-|------|--------|------------|
-| today.md | ~30 lines | 50 lines |
-| inbox.md | ~20 lines | 30 lines |
-| commitments.md | ~40 lines | 60 lines |
-| ambient-tasks.md | ~30 lines | 40 lines |
+| File             | Target    | Hard limit |
+| ---------------- | --------- | ---------- |
+| today.md         | ~30 lines | 50 lines   |
+| inbox.md         | ~20 lines | 30 lines   |
+| commitments.md   | ~40 lines | 60 lines   |
+| ambient-tasks.md | ~30 lines | 40 lines   |
 
 ## Workflow
 
@@ -64,7 +64,25 @@ For files in `state/projects/` and `state/people/`:
 - Consolidate if multiple files cover the same topic
 - Ensure each has a clear purpose
 
-### 8. Commit
+### 8. Review recent journal entries
+
+Use `get_recent_journal` to fetch recent entries (last 40). Look for:
+
+- **Conventions/preferences**: Things Matt said to remember (e.g., "repos go in ~/Repos", "always check lockfile")
+- **Decisions**: Important choices that should be documented in project files
+- **Commitments**: Promises made that should go in commitments.md
+- **People context**: Info about people that should go in people files
+- **Action items**: Tasks that got mentioned but not tracked
+
+For each item found:
+
+- If it's a convention: Add to AGENTS.md or a conventions file
+- If it's a commitment: Add to commitments.md
+- If it's project context: Add to the relevant project file
+- If it's people context: Create or update a people file
+- If it's a one-off task: Add to today.md or ambient-tasks.md
+
+### 9. Commit
 
 Stage and commit with message: "Memory maintenance: pruned state files"
 
@@ -73,12 +91,19 @@ Stage and commit with message: "Memory maintenance: pruned state files"
 Report:
 
 **Files processed:**
+
 - today.md: X lines -> Y lines
 - inbox.md: X lines -> Y lines
 - [etc.]
 
 **Items archived/removed:**
+
 - [List of significant removals]
 
 **Issues found:**
+
 - [Any duplication or staleness concerns]
+
+**Surfaced from journal:**
+
+- [Items moved from journal to state files]
