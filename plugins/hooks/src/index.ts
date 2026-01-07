@@ -83,8 +83,10 @@ export const InnieHooksPlugin: Plugin = async (_ctx) => {
     /**
      * experimental.session.compacting hook: Preserve state during compaction
      *
-     * When OpenCode compacts the context (at ~90% capacity), this hook
-     * injects the critical state files so they survive compaction.
+     * When OpenCode compacts the context (at ~90% capacity), this hook:
+     * 1. Injects the critical state files so they survive compaction
+     * 2. Instructs the model to save the conversation summary using log_journal
+     *
      * Without this, the agent would lose track of today/inbox/commitments.
      */
     "experimental.session.compacting": async (_input, output) => {
@@ -105,17 +107,31 @@ export const InnieHooksPlugin: Plugin = async (_ctx) => {
         }
       }
 
-      if (stateContext.length > 0) {
-        // Inject into compaction context
-        output.context.push(`
-## Critical State (preserved across compaction)
+      // Build the compaction context with instruction
+      const contextParts: string[] = [];
 
-${stateContext.join("\n\n")}
-`);
+      // Add state files
+      if (stateContext.length > 0) {
+        contextParts.push(`## Critical State (preserved across compaction)
+
+${stateContext.join("\n\n")}`);
         console.error(
           `[Hooks] Injected ${stateContext.length} state files into compaction context`
         );
       }
+
+      // Add instruction to save summary
+      contextParts.push(`## Post-Compaction Task
+
+**IMPORTANT:** After this compaction completes, use the \`log_journal\` tool to save a summary of what was discussed and accomplished in this session. Include:
+- Key decisions made
+- Tasks completed or started
+- Important context that should be remembered
+- Any open threads to follow up on
+
+This ensures continuity across context compactions.`);
+
+      output.context.push(contextParts.join("\n\n"));
     },
   };
 };
