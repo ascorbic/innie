@@ -122,3 +122,4 @@ Follow the existing patterns in whatever codebase you're working in. When in dou
 - Repos go in ~/Repos, not /tmp
 - Always check for lockfile (pnpm-lock.yaml, yarn.lock, package-lock.json) before running install commands
 - Commit changes regularly – don't let changes pile up across repos
+- After context compaction, use save_conversation_summary to persist session context
