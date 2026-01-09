@@ -165,7 +165,7 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
     return;
   }
 
-  const now = new Date().toLocaleString("en-US", {
+  const now = new Date().toLocaleString("en-GB", {
     weekday: "long",
     year: "numeric",
     month: "long",

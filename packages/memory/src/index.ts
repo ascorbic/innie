@@ -28,6 +28,7 @@ import {
   getIndexStats,
   indexJournalEntry,
   indexFile,
+  getEntryWithRelated,
   type MemoryItemType,
 } from "./indexer.js";
 import {
@@ -46,7 +47,7 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
-  }
+  },
 );
 
 // Tool definitions
@@ -102,7 +103,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           notes: {
             type: "string",
-            description: "Freeform notes for anything that doesn't fit structured fields",
+            description:
+              "Freeform notes for anything that doesn't fit structured fields",
           },
           keyDecisions: {
             type: "array",
@@ -155,7 +157,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           type: {
             type: "string",
-            enum: ["journal", "state", "project", "person", "meeting"],
+            enum: ["journal", "state", "project", "person", "meeting", "topic"],
             description: "Filter by content type",
           },
           since: {
@@ -200,18 +202,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           type: {
             type: "string",
-            enum: ["state", "project", "person", "meeting"],
+            enum: ["state", "project", "person", "meeting", "topic"],
             description: "Content type",
           },
         },
         required: ["path", "content", "type"],
       },
     },
+    {
+      name: "get_related",
+      description:
+        "Get entries related to a specific memory item. Useful for exploring associative connections in your memory.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description:
+              "The ID of the memory item to find related entries for",
+          },
+        },
+        required: ["id"],
+      },
+    },
     // Scheduling tools
     {
       name: "schedule_reminder",
       description:
-        "Schedule a recurring reminder using cron syntax. Examples: '0 9 * * *' = 9am daily, '0 */2 * * *' = every 2 hours",
+        "Schedule a recurring reminder using cron syntax. Examples: '0 9 * * *' = 9am daily, '0 */2 * * *' = every 2 hours. IMPORTANT: Check the current time before using this tool to ensure accurate scheduling.",
       inputSchema: {
         type: "object",
         properties: {
@@ -233,7 +251,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           model: {
             type: "string",
-            description: "Model to use (e.g., 'anthropic/claude-opus-4-5' for deep thinking tasks)",
+            description:
+              "Model to use (e.g., 'anthropic/claude-opus-4-5' for deep thinking tasks)",
           },
         },
         required: ["id", "cronExpression", "description", "payload"],
@@ -242,7 +261,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "schedule_once",
       description:
-        "Schedule a one-shot reminder at a specific date/time. The reminder fires once and is automatically removed.",
+        "Schedule a one-shot reminder at a specific date/time. The reminder fires once and is automatically removed. IMPORTANT: Check the current time before using this tool to ensure accurate scheduling.",
       inputSchema: {
         type: "object",
         properties: {
@@ -264,7 +283,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           model: {
             type: "string",
-            description: "Model to use (e.g., 'anthropic/claude-opus-4-5' for deep thinking tasks)",
+            description:
+              "Model to use (e.g., 'anthropic/claude-opus-4-5' for deep thinking tasks)",
           },
         },
         required: ["id", "datetime", "description", "payload"],
@@ -361,7 +381,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const summaries = await getRecentSummaries(count);
         if (summaries.length === 0) {
           return {
-            content: [{ type: "text", text: "(no conversation summaries yet)" }],
+            content: [
+              { type: "text", text: "(no conversation summaries yet)" },
+            ],
           };
         }
         const formatted = summaries
@@ -397,14 +419,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
+        // Helper to extract title from topic content (first # heading)
+        const extractTitle = (content: string): string | null => {
+          const match = content.match(/^#\s+(.+)$/m);
+          return match ? match[1] : null;
+        };
+
+        // Helper to get filename without extension from path
+        const getFilename = (path: string): string => {
+          const parts = path.split("/");
+          const file = parts[parts.length - 1] || path;
+          return file.replace(/\.md$/, "");
+        };
+
         const formatted = results
           .map((r, i) => {
             const header = `[${i + 1}] ${r.type}${r.section ? ` / ${r.section}` : ""} (score: ${r.score.toFixed(3)})`;
             const meta = r.timestamp ? `  Date: ${r.timestamp}` : "";
             const source = `  Source: ${r.source}`;
             const content =
-              r.content.slice(0, 500) + (r.content.length > 500 ? "..." : "");
-            return [header, meta, source, "", content].filter(Boolean).join("\n");
+              r.type === "topic"
+                ? r.content
+                : r.content.slice(0, 500) +
+                  (r.content.length > 500 ? "..." : "");
+
+            // Format related items as compact hints
+            // For topics, show "filename: Title" format
+            const relatedLine = r.related?.length
+              ? `  Related: ${r.related
+                  .map((rel) => {
+                    if (rel.type === "topic") {
+                      const filename = getFilename(rel.source);
+                      const title =
+                        extractTitle(rel.snippet) || rel.snippet.slice(0, 30);
+                      return `"${filename}": ${title}`;
+                    }
+                    return `[${rel.type}] ${rel.snippet.slice(0, 40)}...`;
+                  })
+                  .join(" | ")}`
+              : "";
+
+            return [header, meta, source, "", content, relatedLine]
+              .filter(Boolean)
+              .join("\n");
           })
           .join("\n\n---\n\n");
 
@@ -441,7 +498,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { path, content, type } = args as {
           path: string;
           content: string;
-          type: "state" | "project" | "person" | "meeting";
+          type: "state" | "project" | "person" | "meeting" | "topic";
         };
         const result = await indexFile(path, content, type);
         return {
@@ -454,6 +511,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "get_related": {
+        const { id } = args as { id: string };
+        const { entry, related } = await getEntryWithRelated(id);
+
+        if (!entry) {
+          return {
+            content: [{ type: "text", text: `Entry "${id}" not found` }],
+            isError: true,
+          };
+        }
+
+        const parts: string[] = [];
+
+        // Format the main entry
+        parts.push("**Entry:**");
+        parts.push(
+          `  ${entry.timestamp || "no date"} - ${entry.content.slice(0, 200)}...`,
+        );
+
+        // Format related entries
+        if (related.length > 0) {
+          parts.push("");
+          parts.push(`**Related (${related.length}):**`);
+          for (const r of related) {
+            parts.push(`  - [${r.type}] ${r.snippet} (${r.score.toFixed(2)})`);
+          }
+        } else {
+          parts.push("");
+          parts.push("(no related entries found)");
+        }
+
+        return {
+          content: [{ type: "text", text: parts.join("\n") }],
+        };
+      }
+
       // Scheduling tools
       case "schedule_reminder": {
         const { id, cronExpression, description, payload, model } = args as {
@@ -463,7 +556,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           payload: string;
           model?: string;
         };
-        const reminder = await addCronReminder(id, cronExpression, description, payload, model);
+        const reminder = await addCronReminder(
+          id,
+          cronExpression,
+          description,
+          payload,
+          model,
+        );
         const modelInfo = model ? ` (model: ${model})` : "";
         return {
           content: [
@@ -483,7 +582,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           payload: string;
           model?: string;
         };
-        const reminder = await addOnceReminder(id, datetime, description, payload, model);
+        const reminder = await addOnceReminder(
+          id,
+          datetime,
+          description,
+          payload,
+          model,
+        );
         const date = new Date(datetime);
         const modelInfo = model ? ` (model: ${model})` : "";
         return {
@@ -503,7 +608,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: removed ? `Reminder "${id}" removed` : `Reminder "${id}" not found`,
+              text: removed
+                ? `Reminder "${id}" removed`
+                : `Reminder "${id}" not found`,
             },
           ],
         };

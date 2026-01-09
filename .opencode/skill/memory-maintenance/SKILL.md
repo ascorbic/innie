@@ -64,7 +64,16 @@ For files in `state/projects/` and `state/people/`:
 - Consolidate if multiple files cover the same topic
 - Ensure each has a clear purpose
 
-### 8. Review recent journal entries
+### 8. Review topic files
+
+For files in `state/topics/`:
+
+- Check each is under ~20 lines (distilled, not exhaustive)
+- Remove any that are stale or no longer relevant
+- Look for topics that should be merged (overlapping concepts)
+- Verify accuracy - flag anything that might be outdated
+
+### 9. Review recent journal entries
 
 Use `get_recent_journal` to fetch recent entries (last 40). Look for:
 
@@ -81,10 +90,11 @@ For each item found:
 - If it's project context: Add to the relevant project file
 - If it's people context: Create or update a people file
 - If it's a one-off task: Add to today.md or ambient-tasks.md
+- If it's durable knowledge: Create or update a topic file
 
-### 9. Commit
+### 10. Commit
 
-Stage and commit with message: "Memory maintenance: pruned state files"
+Stage and commit with message: "Memory maintenance: [date]"
 
 ## Output
 

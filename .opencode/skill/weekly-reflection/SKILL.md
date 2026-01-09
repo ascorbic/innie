@@ -22,10 +22,10 @@ Search memory for this week's entries. Look for:
 
 For each item in `state/commitments.md`:
 
-| Age | Action |
-|-----|--------|
-| < 1 week | Keep, ensure it has clear next action |
-| 1-2 weeks | Evaluate: still relevant? Add context or escalate |
+| Age       | Action                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------ |
+| < 1 week  | Keep, ensure it has clear next action                                                            |
+| 1-2 weeks | Evaluate: still relevant? Add context or escalate                                                |
 | > 2 weeks | Either break into smaller pieces, escalate to Matt, or acknowledge it's not happening and remove |
 
 Flag anything that's been stuck without progress.
@@ -44,9 +44,20 @@ For each file in `state/projects/`:
 - Add any new ambient tasks identified this week
 - Prioritise based on what would be most valuable
 
-### 5. Consider identity updates
+### 5. Review topics (working knowledge)
 
-Read `AGENTS.md` and consider:
+For each file in `state/topics/`:
+
+- Is it still accurate? Update if understanding has changed
+- Is it still relevant? Archive if obsolete
+- Any gaps? Look for concepts mentioned this week that don't have topics yet
+- Any topics that could be merged or split?
+
+Consider: What did I learn this week that I'd want to remember in 3 months?
+
+### 7. Consider identity updates
+
+Read `state/identity.md` and consider:
 
 - Any new patterns learned about how to work effectively?
 - Any values or principles that should be made explicit?
@@ -54,7 +65,7 @@ Read `AGENTS.md` and consider:
 
 If updates needed, propose specific edits.
 
-### 6. Write weekly summary
+### 8. Write weekly summary
 
 Log a journal entry with topic "weekly-reflection" containing:
 
@@ -62,8 +73,9 @@ Log a journal entry with topic "weekly-reflection" containing:
 - Key patterns observed
 - Focus areas for next week
 - Any identity/process improvements
+- Topics added or revised
 
-### 7. Commit
+### 9. Commit
 
 Stage and commit all changes with message: "Weekly reflection: [date range]"
 
@@ -72,13 +84,17 @@ Stage and commit all changes with message: "Weekly reflection: [date range]"
 Provide a structured summary:
 
 **This week:**
+
 - [Key accomplishments]
 
 **Patterns noticed:**
+
 - [Observations about work habits, blockers, etc.]
 
 **Next week focus:**
+
 - [Priority areas]
 
 **Process improvements:**
+
 - [Any suggested changes to how we work]

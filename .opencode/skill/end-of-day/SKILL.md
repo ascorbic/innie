@@ -44,24 +44,42 @@ Reset `state/today.md` with:
 # Today – [Day, Date]
 
 ## Priorities
+
 - [ ] [Most important thing from commitments]
 - [ ] [Second priority]
 - [ ] [Third priority]
 
 ## Open threads
+
 - [Anything in progress that needs continuation]
 ```
 
-### 5. Write summary
+### 5. Update topics (working knowledge)
+
+Review today's journal entries and conversations for new learnings:
+
+- **New terms**: Internal Cloudflare terminology, project names, concepts encountered
+- **Updated understanding**: Corrections to existing knowledge
+- **Technical insights**: Patterns, gotchas, how things work
+
+For each:
+
+- If new concept: create `state/topics/[name].md` (~20 lines max)
+- If existing topic needs update: revise the topic file (replace outdated info, don't append)
+- Use wiki to fill gaps on internal terminology
+
+Keep topics small and current - distilled understanding, not exhaustive notes.
+
+### 6. Write summary
 
 Log a journal entry summarizing:
 
 - What got done
 - What's carrying over
 - Any blockers or concerns
-- Energy/focus observations if notable
+- Topics created or updated
 
-### 6. Commit
+### 7. Commit
 
 Stage and commit all state file changes with message: "End of day: [date]"
 
@@ -71,4 +89,5 @@ After completing the workflow, provide a brief summary:
 
 - Tasks completed today
 - Items rolled to tomorrow
+- Topics created/updated
 - Any concerns flagged
