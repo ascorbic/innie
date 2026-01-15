@@ -12,8 +12,8 @@
  */
 
 import { LocalIndex } from "vectra";
-import { join, dirname } from "path";
-import { readFile, readdir, stat, mkdir } from "fs/promises";
+import { join } from "path";
+import { readFile, readdir, stat, mkdir, writeFile } from "fs/promises";
 import { embed, embedBatch } from "./embeddings.js";
 
 // MEMORY_DIR is the base directory, with fallback to legacy vars
@@ -331,6 +331,53 @@ async function findMarkdownFiles(dir: string): Promise<string[]> {
 }
 
 /**
+ * Generate topics.md - an index of all topic files for context injection
+ * Format: `- filename.md - Title`
+ */
+async function generateTopicsIndex(): Promise<void> {
+  const topicsDir = join(STATE_PATH, "topics");
+  const outputPath = join(STATE_PATH, "topics.md");
+
+  try {
+    const files = await findMarkdownFiles(topicsDir);
+    const entries: { filename: string; title: string }[] = [];
+
+    for (const file of files) {
+      const content = await readFile(file, "utf-8");
+      const filename = file.split("/").pop() || file;
+
+      // Extract H1 title from content
+      const titleMatch = content.match(/^#\s+(.+)$/m);
+      const title = titleMatch ? titleMatch[1] : filename.replace(/\.md$/, "");
+
+      entries.push({ filename, title });
+    }
+
+    // Sort alphabetically by title
+    entries.sort((a, b) => a.title.localeCompare(b.title));
+
+    // Generate markdown
+    const lines = [
+      "# Topics",
+      "",
+      "Working knowledge - distilled understanding of concepts and tools.",
+      "",
+    ];
+    for (const { filename, title } of entries) {
+      lines.push(`- ${filename} - ${title}`);
+    }
+    lines.push("");
+
+    await writeFile(outputPath, lines.join("\n"));
+    console.error(
+      `[Memory] Generated topics.md with ${entries.length} entries`,
+    );
+  } catch (error) {
+    console.error("[Memory] Failed to generate topics.md:", error);
+  }
+}
+
+/**
  * Rebuild the entire index from scratch
  * Journal entries are indexed with associative links
  */
@@ -413,6 +460,9 @@ export async function rebuildIndex(): Promise<{ itemCount: number }> {
     `[Memory] Indexing ${nonJournalItems.length} non-journal items...`,
   );
   await indexItems(nonJournalItems);
+
+  // Generate topics.md index
+  await generateTopicsIndex();
 
   // 6. Index journal entries one by one to build associative links
   console.error("[Memory] Parsing and linking journal entries...");
@@ -555,6 +605,10 @@ export async function indexFile(
       source: filePath,
     };
     await indexItem(item);
+
+    // Regenerate topics.md index
+    await generateTopicsIndex();
+
     return { itemCount: 1 };
   }
 
