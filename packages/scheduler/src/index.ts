@@ -2,26 +2,44 @@
 /**
  * Scheduler Daemon for Innie
  *
- * Watches schedule.json and triggers opencode when events are due.
+ * Watches reminders/ directory and triggers opencode when events are due.
+ * Each reminder is stored as a separate file to prevent contention.
  * Designed to be run as a persistent daemon via launchd.
  *
  * Environment variables:
  * - MEMORY_DIR: Path to memory directory (default: ~/.innie)
  * - OPENCODE_HOST: OpenCode server host (default: 127.0.0.1)
  * - OPENCODE_PORT: OpenCode server port (default: 4097)
+ * - OPENCODE_SERVER_PASSWORD: Password for HTTP Basic Auth (required)
+ * - OPENCODE_SERVER_USERNAME: Username for HTTP Basic Auth (default: opencode)
  */
 
-import { watch, existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { watch, existsSync, readdirSync } from "node:fs";
+import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import path from "node:path";
 import schedule from "node-schedule";
 
 const MEMORY_DIR =
   process.env.MEMORY_DIR || path.join(process.env.HOME || "", ".innie");
-const SCHEDULE_FILE = path.join(MEMORY_DIR, "schedule.json");
+const REMINDERS_DIR = path.join(MEMORY_DIR, "reminders");
 const OPENCODE_HOST = process.env.OPENCODE_HOST || "127.0.0.1";
-const OPENCODE_PORT = process.env.OPENCODE_PORT || "4096";
+const OPENCODE_PORT = process.env.OPENCODE_PORT || "4097";
 const OPENCODE_URL = `http://${OPENCODE_HOST}:${OPENCODE_PORT}`;
+const OPENCODE_USERNAME = process.env.OPENCODE_SERVER_USERNAME || "opencode";
+const OPENCODE_PASSWORD = process.env.OPENCODE_SERVER_PASSWORD || "";
+
+/**
+ * Get Authorization header for Basic Auth
+ */
+function getAuthHeader(): Record<string, string> {
+  if (!OPENCODE_PASSWORD) {
+    return {};
+  }
+  const credentials = Buffer.from(
+    `${OPENCODE_USERNAME}:${OPENCODE_PASSWORD}`,
+  ).toString("base64");
+  return { Authorization: `Basic ${credentials}` };
+}
 
 interface ScheduledReminder {
   id: string;
@@ -34,16 +52,11 @@ interface ScheduledReminder {
   model?: string;
 }
 
-interface ScheduleState {
-  reminders: ScheduledReminder[];
-  version: number;
-}
-
 // Active jobs keyed by reminder ID
 const activeJobs = new Map<string, schedule.Job>();
 
-// Current schedule version (for detecting changes)
-let currentVersion = 0;
+// Track file mtimes to detect changes
+const fileMtimes = new Map<string, number>();
 
 /**
  * Log with ISO timestamp
@@ -57,39 +70,61 @@ function logError(message: string, error?: unknown): void {
 }
 
 /**
- * Load schedule state from file
+ * Get reminder file path
  */
-async function loadSchedule(): Promise<ScheduleState> {
+function getReminderPath(id: string): string {
+  const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return path.join(REMINDERS_DIR, `${safeId}.json`);
+}
+
+/**
+ * Load a single reminder from file
+ */
+async function loadReminder(
+  filePath: string,
+): Promise<ScheduledReminder | null> {
   try {
-    if (!existsSync(SCHEDULE_FILE)) {
-      return { reminders: [], version: 0 };
-    }
-    const content = await readFile(SCHEDULE_FILE, "utf-8");
-    return JSON.parse(content) as ScheduleState;
+    const content = await readFile(filePath, "utf-8");
+    return JSON.parse(content) as ScheduledReminder;
   } catch (error) {
-    logError("[Scheduler] Failed to load schedule:", error);
-    return { reminders: [], version: 0 };
+    logError(`[Scheduler] Failed to load reminder ${filePath}:`, error);
+    return null;
   }
 }
 
 /**
- * Save schedule state (for updating lastRun)
+ * Load all reminders from directory
  */
-async function saveSchedule(state: ScheduleState): Promise<void> {
-  await writeFile(SCHEDULE_FILE, JSON.stringify(state, null, 2));
+async function loadAllReminders(): Promise<ScheduledReminder[]> {
+  if (!existsSync(REMINDERS_DIR)) {
+    return [];
+  }
+
+  const reminders: ScheduledReminder[] = [];
+  const files = readdirSync(REMINDERS_DIR);
+
+  for (const file of files) {
+    if (!file.endsWith(".json") || file.endsWith(".tmp")) continue;
+
+    const filePath = path.join(REMINDERS_DIR, file);
+    const reminder = await loadReminder(filePath);
+    if (reminder) {
+      reminders.push(reminder);
+    }
+  }
+
+  return reminders;
 }
 
 /**
- * Mark a reminder as run
+ * Mark a reminder as run (update lastRun timestamp)
  */
 async function markReminderRun(id: string): Promise<void> {
-  const state = await loadSchedule();
-  const reminder = state.reminders.find((r) => r.id === id);
+  const filePath = getReminderPath(id);
+  const reminder = await loadReminder(filePath);
   if (reminder) {
     reminder.lastRun = new Date().toISOString();
-    state.version++;
-    currentVersion = state.version; // Update local version to avoid re-sync
-    await saveSchedule(state);
+    await writeFile(filePath, JSON.stringify(reminder, null, 2));
   }
 }
 
@@ -97,11 +132,13 @@ async function markReminderRun(id: string): Promise<void> {
  * Remove a one-shot reminder after it fires
  */
 async function removeOnceReminder(id: string): Promise<void> {
-  const state = await loadSchedule();
-  state.reminders = state.reminders.filter((r) => r.id !== id);
-  state.version++;
-  currentVersion = state.version;
-  await saveSchedule(state);
+  const filePath = getReminderPath(id);
+  try {
+    await unlink(filePath);
+    log(`[Scheduler] Removed one-shot reminder: ${id}`);
+  } catch {
+    // File might already be gone
+  }
 }
 
 /**
@@ -109,7 +146,9 @@ async function removeOnceReminder(id: string): Promise<void> {
  */
 async function isServerRunning(): Promise<boolean> {
   try {
-    const res = await fetch(`${OPENCODE_URL}/global/health`);
+    const res = await fetch(`${OPENCODE_URL}/global/health`, {
+      headers: getAuthHeader(),
+    });
     return res.ok;
   } catch {
     return false;
@@ -121,7 +160,9 @@ async function isServerRunning(): Promise<boolean> {
  */
 async function getOrCreateSession(): Promise<string> {
   // List existing sessions
-  const listRes = await fetch(`${OPENCODE_URL}/session`);
+  const listRes = await fetch(`${OPENCODE_URL}/session`, {
+    headers: getAuthHeader(),
+  });
   if (!listRes.ok) {
     throw new Error(`Failed to list sessions: ${listRes.status}`);
   }
@@ -140,7 +181,7 @@ async function getOrCreateSession(): Promise<string> {
   // Create a new session for scheduled tasks
   const createRes = await fetch(`${OPENCODE_URL}/session`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeader() },
     body: JSON.stringify({ title: "Scheduler" }),
   });
 
@@ -195,7 +236,7 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
       `${OPENCODE_URL}/session/${sessionId}/prompt_async`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeader() },
         body: JSON.stringify(body),
       },
     );
@@ -256,53 +297,68 @@ function scheduleReminder(reminder: ScheduledReminder): void {
 }
 
 /**
- * Sync jobs with schedule file
+ * Sync a single reminder file
  */
-async function syncSchedule(): Promise<void> {
-  const state = await loadSchedule();
-
-  // Skip if version hasn't changed
-  if (state.version === currentVersion) {
-    return;
+async function syncReminderFile(filePath: string): Promise<void> {
+  const reminder = await loadReminder(filePath);
+  if (reminder) {
+    scheduleReminder(reminder);
   }
+}
 
-  log(
-    `[Scheduler] Syncing schedule (version ${currentVersion} -> ${state.version})`,
-  );
-  currentVersion = state.version;
-
-  // Get current reminder IDs
-  const newIds = new Set(state.reminders.map((r) => r.id));
+/**
+ * Sync all reminders from directory
+ */
+async function syncAllReminders(): Promise<void> {
+  const reminders = await loadAllReminders();
+  const currentIds = new Set(reminders.map((r) => r.id));
 
   // Cancel jobs for removed reminders
   for (const [id, job] of activeJobs) {
-    if (!newIds.has(id)) {
+    if (!currentIds.has(id)) {
       log(`[Scheduler] Removing: ${id}`);
       job.cancel();
       activeJobs.delete(id);
     }
   }
 
-  // Schedule new/updated reminders
-  for (const reminder of state.reminders) {
+  // Schedule all reminders
+  for (const reminder of reminders) {
     scheduleReminder(reminder);
   }
 }
 
 /**
- * Watch schedule file for changes
+ * Watch reminders directory for changes
  */
-function watchScheduleFile(): void {
-  if (!existsSync(SCHEDULE_FILE)) {
-    log(`[Scheduler] Schedule file not found, will create on first reminder`);
-    return;
+function watchRemindersDir(): void {
+  if (!existsSync(REMINDERS_DIR)) {
+    log(`[Scheduler] Reminders directory not found, creating...`);
+    mkdir(REMINDERS_DIR, { recursive: true }).catch(console.error);
   }
 
-  const watcher = watch(SCHEDULE_FILE, async (eventType) => {
-    if (eventType === "change") {
-      // Debounce rapid changes
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      await syncSchedule();
+  const watcher = watch(REMINDERS_DIR, async (eventType, filename) => {
+    if (!filename || !filename.endsWith(".json") || filename.endsWith(".tmp")) {
+      return;
+    }
+
+    // Debounce rapid changes
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const filePath = path.join(REMINDERS_DIR, filename);
+
+    if (existsSync(filePath)) {
+      // File added or modified
+      log(`[Scheduler] Reminder changed: ${filename}`);
+      await syncReminderFile(filePath);
+    } else {
+      // File removed
+      const id = filename.replace(".json", "");
+      if (activeJobs.has(id)) {
+        log(`[Scheduler] Reminder removed: ${id}`);
+        activeJobs.get(id)?.cancel();
+        activeJobs.delete(id);
+      }
     }
   });
 
@@ -310,7 +366,7 @@ function watchScheduleFile(): void {
     logError("[Scheduler] Watch error:", error);
   });
 
-  log(`[Scheduler] Watching: ${SCHEDULE_FILE}`);
+  log(`[Scheduler] Watching: ${REMINDERS_DIR}`);
 }
 
 /**
@@ -319,17 +375,28 @@ function watchScheduleFile(): void {
 async function main(): Promise<void> {
   log("[Scheduler] Starting...");
   log(`[Scheduler] MEMORY_DIR: ${MEMORY_DIR}`);
+  log(`[Scheduler] REMINDERS_DIR: ${REMINDERS_DIR}`);
   log(`[Scheduler] OPENCODE_URL: ${OPENCODE_URL}`);
+  if (OPENCODE_PASSWORD) {
+    log(`[Scheduler] Auth: Basic auth enabled (user: ${OPENCODE_USERNAME})`);
+  } else {
+    log(`[Scheduler] Auth: No password set - set OPENCODE_SERVER_PASSWORD`);
+  }
+
+  // Ensure reminders directory exists
+  if (!existsSync(REMINDERS_DIR)) {
+    await mkdir(REMINDERS_DIR, { recursive: true });
+  }
 
   // Initial sync
-  await syncSchedule();
+  await syncAllReminders();
 
   // Watch for changes
-  watchScheduleFile();
+  watchRemindersDir();
 
   // Also poll every minute in case file watch misses changes
   setInterval(() => {
-    syncSchedule().catch(console.error);
+    syncAllReminders().catch(console.error);
   }, 60 * 1000);
 
   log("[Scheduler] Running. Press Ctrl+C to stop.");

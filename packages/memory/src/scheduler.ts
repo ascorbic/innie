@@ -1,16 +1,17 @@
 /**
  * Scheduler state management
  *
- * The memory MCP provides tools to read/write the schedule.
- * A separate daemon process watches the schedule file and triggers events.
+ * Each reminder is stored as a separate file in reminders/ directory.
+ * This prevents contention when multiple reminders fire simultaneously.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-const MEMORY_DIR = process.env.MEMORY_DIR || path.join(process.env.HOME || "", ".innie");
-const SCHEDULE_FILE = path.join(MEMORY_DIR, "schedule.json");
+const MEMORY_DIR =
+  process.env.MEMORY_DIR || path.join(process.env.HOME || "", ".innie");
+const REMINDERS_DIR = path.join(MEMORY_DIR, "reminders");
 
 export interface ScheduledReminder {
   id: string;
@@ -21,36 +22,62 @@ export interface ScheduledReminder {
   payload: string;
   createdAt: string;
   lastRun?: string;
-  /** Optional model override (e.g., "anthropic/claude-sonnet-4-20250514" for deep thinking tasks) */
+  /** Optional model override (e.g., "anthropic/claude-opus-4-5" for deep thinking tasks) */
   model?: string;
 }
 
-export interface ScheduleState {
-  reminders: ScheduledReminder[];
-  version: number;
+/**
+ * Get the path to a reminder file
+ */
+function getReminderPath(id: string): string {
+  // Sanitize ID for filesystem safety
+  const safeId = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return path.join(REMINDERS_DIR, `${safeId}.json`);
 }
 
 /**
- * Load schedule state from file
+ * Ensure reminders directory exists
  */
-export async function loadSchedule(): Promise<ScheduleState> {
-  try {
-    if (!existsSync(SCHEDULE_FILE)) {
-      return { reminders: [], version: 1 };
-    }
-    const content = await readFile(SCHEDULE_FILE, "utf-8");
-    return JSON.parse(content) as ScheduleState;
-  } catch {
-    return { reminders: [], version: 1 };
+async function ensureRemindersDir(): Promise<void> {
+  if (!existsSync(REMINDERS_DIR)) {
+    await mkdir(REMINDERS_DIR, { recursive: true });
   }
 }
 
 /**
- * Save schedule state to file
+ * Load a single reminder by ID
  */
-export async function saveSchedule(state: ScheduleState): Promise<void> {
-  await mkdir(path.dirname(SCHEDULE_FILE), { recursive: true });
-  await writeFile(SCHEDULE_FILE, JSON.stringify(state, null, 2));
+export async function loadReminder(
+  id: string,
+): Promise<ScheduledReminder | null> {
+  try {
+    const filePath = getReminderPath(id);
+    if (!existsSync(filePath)) {
+      return null;
+    }
+    const content = await readFile(filePath, "utf-8");
+    return JSON.parse(content) as ScheduledReminder;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save a single reminder
+ */
+async function saveReminder(reminder: ScheduledReminder): Promise<void> {
+  await ensureRemindersDir();
+  const filePath = getReminderPath(reminder.id);
+  // Write to temp file first, then rename for atomic write
+  const tempPath = `${filePath}.tmp`;
+  await writeFile(tempPath, JSON.stringify(reminder, null, 2));
+  await writeFile(filePath, JSON.stringify(reminder, null, 2));
+  // Clean up temp file
+  try {
+    await unlink(tempPath);
+  } catch {
+    // Ignore if already gone
+  }
 }
 
 /**
@@ -61,13 +88,8 @@ export async function addCronReminder(
   cronExpression: string,
   description: string,
   payload: string,
-  model?: string
+  model?: string,
 ): Promise<ScheduledReminder> {
-  const state = await loadSchedule();
-
-  // Remove existing reminder with same ID
-  state.reminders = state.reminders.filter(r => r.id !== id);
-
   const reminder: ScheduledReminder = {
     id,
     type: "cron",
@@ -78,10 +100,7 @@ export async function addCronReminder(
     ...(model && { model }),
   };
 
-  state.reminders.push(reminder);
-  state.version++;
-  await saveSchedule(state);
-
+  await saveReminder(reminder);
   return reminder;
 }
 
@@ -93,13 +112,8 @@ export async function addOnceReminder(
   datetime: string,
   description: string,
   payload: string,
-  model?: string
+  model?: string,
 ): Promise<ScheduledReminder> {
-  const state = await loadSchedule();
-
-  // Remove existing reminder with same ID
-  state.reminders = state.reminders.filter(r => r.id !== id);
-
   const reminder: ScheduledReminder = {
     id,
     type: "once",
@@ -110,10 +124,7 @@ export async function addOnceReminder(
     ...(model && { model }),
   };
 
-  state.reminders.push(reminder);
-  state.version++;
-  await saveSchedule(state);
-
+  await saveReminder(reminder);
   return reminder;
 }
 
@@ -121,42 +132,65 @@ export async function addOnceReminder(
  * Remove a reminder by ID
  */
 export async function removeReminder(id: string): Promise<boolean> {
-  const state = await loadSchedule();
-  const before = state.reminders.length;
-  state.reminders = state.reminders.filter(r => r.id !== id);
-
-  if (state.reminders.length < before) {
-    state.version++;
-    await saveSchedule(state);
-    return true;
+  const filePath = getReminderPath(id);
+  if (!existsSync(filePath)) {
+    return false;
   }
-  return false;
+  try {
+    await unlink(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * List all reminders
  */
 export async function listReminders(): Promise<ScheduledReminder[]> {
-  const state = await loadSchedule();
-  return state.reminders;
+  await ensureRemindersDir();
+
+  try {
+    const files = await readdir(REMINDERS_DIR);
+    const reminders: ScheduledReminder[] = [];
+
+    for (const file of files) {
+      if (!file.endsWith(".json") || file.endsWith(".tmp")) continue;
+
+      try {
+        const content = await readFile(path.join(REMINDERS_DIR, file), "utf-8");
+        const reminder = JSON.parse(content) as ScheduledReminder;
+        reminders.push(reminder);
+      } catch {
+        // Skip corrupted files
+      }
+    }
+
+    return reminders;
+  } catch {
+    return [];
+  }
 }
 
 /**
  * Mark a reminder as run (update lastRun timestamp)
  */
 export async function markReminderRun(id: string): Promise<void> {
-  const state = await loadSchedule();
-  const reminder = state.reminders.find(r => r.id === id);
+  const reminder = await loadReminder(id);
   if (reminder) {
     reminder.lastRun = new Date().toISOString();
-    state.version++;
-    await saveSchedule(state);
+    await saveReminder(reminder);
   }
 }
 
 /**
- * Get the schedule file path (for the daemon to watch)
+ * Get the reminders directory path (for the daemon to watch)
  */
+export function getRemindersDir(): string {
+  return REMINDERS_DIR;
+}
+
+// Legacy export for backwards compatibility during migration
 export function getScheduleFilePath(): string {
-  return SCHEDULE_FILE;
+  return path.join(MEMORY_DIR, "schedule.json");
 }

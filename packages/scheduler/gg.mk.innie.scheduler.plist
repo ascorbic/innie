@@ -15,6 +15,10 @@
     <dict>
         <key>MEMORY_DIR</key>
         <string>/Users/mkane/Repos/innie-memory</string>
+        <key>OPENCODE_SERVER_PASSWORD</key>
+        <string>bxFdC5x4xZlXT14RRtBqSmQ8M01sXqX</string>
+        <key>OPENCODE_PORT</key>
+        <string>4097</string>
     </dict>
 
     <key>RunAtLoad</key>
