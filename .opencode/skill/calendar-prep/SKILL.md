@@ -115,6 +115,10 @@ status: upcoming
 
 [Key facts from research]
 
+## Email & Chat Context
+
+[Recent email threads, DMs, decisions, or action items related to this meeting]
+
 ## Talking points
 
 - [Point 1]
@@ -128,35 +132,40 @@ status: upcoming
 
 The frontmatter enables queries like "find all upcoming external meetings" or "meetings with Alice in the last month".
 
-### 6. Schedule meeting reminders
+### 6. Check related emails and chat messages
 
-For each meeting today that involves a call (has a Zoom/Meet/Teams link, or location indicates video call):
+For each meeting, search Gmail and Google Chat for relevant context:
 
-1. First check existing reminders with `list_reminders`
-2. Skip if a reminder for this meeting already exists
-3. Schedule a one-shot reminder 1 minute before the meeting start time
+1. **Search for email threads** related to the meeting:
+   - Search by attendee email addresses
+   - Search by meeting subject or key topics
+   - Search within the last 2-4 weeks leading up to the meeting
 
-```bash
-# Use schedule_once with meeting ID or slug
-schedule_once(
-  id: "meeting-[event-slug]",
-  datetime: "[meeting-start-minus-1-min-ISO]",
-  description: "Meeting reminder: [meeting title]",
-  payload: "Show a modal alert: '[meeting title]' starts in 1 minute. [Include Zoom/Meet link if available]"
-)
+2. **Search for recent DMs** with meeting attendees:
+   - Use `google-workspace_chat_search_messages` to find recent direct messages from each attendee
+   - Look for context about why the meeting was scheduled
+   - Check for any prep work or topics they mentioned
+   - Search within the last 1-2 weeks
+
+3. **Surface insights** in the prep doc/briefing:
+   - Recent discussions or decisions from email/chat
+   - Action items or commitments made via email/chat
+   - Questions or concerns raised
+   - Shared documents or context
+   - Previous meeting notes sent via email
+   - Topics or agenda items mentioned in DMs
+
+4. **Add context** to the briefing under "Email & Chat Context" section:
+
+```markdown
+## Email & Chat Context
+
+- [Date] (email): [Brief summary of relevant email thread or decision]
+- [Date] (chat): [Recent DM context - why meeting scheduled, topics to cover]
+- [Date]: [Action items or commitments]
 ```
 
-Indicators a meeting has a call:
-
-- Location contains "zoom", "meet.google", "teams.microsoft"
-- Description contains video conferencing links
-- Event title mentions "call" or "sync"
-
-Skip reminders for:
-
-- All-day events
-- In-person meetings (office room locations)
-- Meetings that already have a reminder scheduled
+Focus on communications that provide context the meeting organizer or attendees might reference.
 
 ### 7. Update today.md
 
@@ -204,5 +213,5 @@ After completing the workflow, summarize:
 - Prep tasks added to today.md
 - New people files created
 - Meeting folders created (with paths)
-- Meeting reminders scheduled (with times)
+- Email and chat insights surfaced (key threads, DMs, or context found)
 - Gaps (events you couldn't fully prep for and why)
