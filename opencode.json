@@ -8,13 +8,17 @@
   "mcp": {
     "memory": {
       "type": "local",
-      "command": ["npx", "/Users/mkane/Repos/innie/packages/memory"],
+      "command": [
+        "node",
+        "/Users/mkane/Repos/innie/packages/memory/dist/index.mjs"
+      ],
       "environment": {
         "MEMORY_DIR": "/Users/mkane/Repos/innie-memory"
-      }
+      },
+      "enabled": true
     }
   },
-  "plugin": ["./plugins/hooks/dist/index.mjs"],
+  "plugin": ["./plugins/hooks/src/index.ts"],
   "permission": {
     "read": {
       "*": "allow",
