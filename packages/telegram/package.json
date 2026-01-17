@@ -1,0 +1,39 @@
+{
+  "name": "@innie-ai/telegram",
+  "version": "1.0.0",
+  "description": "Telegram MCP server for sending messages, files, and photos",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "bin": "dist/index.mjs",
+  "files": ["dist"],
+  "exports": {
+    ".": "./dist/index.mjs"
+  },
+  "scripts": {
+    "build": "tsdown src/*.ts --format esm --dts --clean",
+    "dev": "tsdown src/*.ts --format esm --dts --watch",
+    "start": "node dist/index.mjs",
+    "prepublishOnly": "pnpm run build",
+    "check": "publint && attw --pack --ignore-rules=cjs-resolves-to-esm"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "form-data": "^4.0.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@types/node": "^22.15.3",
+    "publint": "^0.3.16",
+    "tsdown": "^0.18.4",
+    "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+github.com:ascorbic/innie.git",
+    "directory": "packages/telegram"
+  },
+  "homepage": "https://github.com/ascorbic/innie",
+  "author": "Matt Kane",
+  "license": "MIT"
+}
