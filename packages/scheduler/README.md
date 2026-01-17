@@ -13,9 +13,13 @@ Scheduler daemon for Innie. Watches `schedule.json` and triggers `opencode` when
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MEMORY_DIR` | `~/.innie` | Path to memory directory containing `schedule.json` |
-| `OPENCODE_PATH` | `opencode` | Path to opencode binary |
-| `OPENCODE_PROJECT` | `cwd` | Project directory for opencode |
+| `MEMORY_DIR` | `~/.innie` | Path to memory directory containing reminders |
+| `OPENCODE_HOST` | `127.0.0.1` | OpenCode HTTP server host |
+| `OPENCODE_PORT` | `4097` | OpenCode HTTP server port |
+| `OPENCODE_SERVER_PASSWORD` | (none) | Password for HTTP Basic Auth |
+| `OPENCODE_SERVER_USERNAME` | `opencode` | Username for HTTP Basic Auth |
+| `TELEGRAM_BOT_TOKEN` | (none) | Telegram bot token for message integration |
+| `TELEGRAM_CHAT_ID` | (none) | Restrict bot to specific chat ID (recommended)
 
 ## Installation
 
@@ -87,3 +91,29 @@ The `schedule.json` file contains:
 | `0 */2 * * *` | Every 2 hours |
 | `30 17 * * 5` | 5:30pm on Fridays |
 | `0 8 1 * *` | 8am on the 1st of each month |
+
+## Telegram Integration
+
+The scheduler can receive messages via Telegram and route them to OpenCode sessions.
+
+### Setup
+
+1. Create a bot via [@BotFather](https://t.me/BotFather) and get the token
+2. Get your chat ID (send a message to the bot, then check `https://api.telegram.org/bot<TOKEN>/getUpdates`)
+3. Set environment variables:
+   ```bash
+   export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."
+   export TELEGRAM_CHAT_ID="12345678"  # Your chat ID
+   ```
+
+### How It Works
+
+1. The daemon long-polls Telegram for new messages (30s timeout)
+2. When a message arrives, it checks if the "Telegram" session is busy
+3. If busy, it aborts the current task first (interrupt-and-resume)
+4. The message is sent to OpenCode via `prompt_async`
+5. Innie processes the message and can respond via its own Telegram tools
+
+### Security
+
+Always set `TELEGRAM_CHAT_ID` to restrict the bot to your personal chat. Without this, the bot will respond to messages from any user.

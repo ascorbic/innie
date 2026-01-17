@@ -12,12 +12,15 @@
  * - OPENCODE_PORT: OpenCode server port (default: 4097)
  * - OPENCODE_SERVER_PASSWORD: Password for HTTP Basic Auth (required)
  * - OPENCODE_SERVER_USERNAME: Username for HTTP Basic Auth (default: opencode)
+ * - TELEGRAM_BOT_TOKEN: Telegram bot token for message integration (optional)
+ * - TELEGRAM_CHAT_ID: Allowed Telegram chat ID for security (optional)
  */
 
 import { watch, existsSync, readdirSync } from "node:fs";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import path from "node:path";
 import schedule from "node-schedule";
+import { createTelegramPoller, type TelegramPoller } from "./telegram.js";
 
 const MEMORY_DIR =
   process.env.MEMORY_DIR || path.join(process.env.HOME || "", ".innie");
@@ -57,6 +60,9 @@ const activeJobs = new Map<string, schedule.Job>();
 
 // Track file mtimes to detect changes
 const fileMtimes = new Map<string, number>();
+
+// Telegram poller instance
+let telegramPoller: TelegramPoller | null = null;
 
 /**
  * Log with ISO timestamp
@@ -399,11 +405,27 @@ async function main(): Promise<void> {
     syncAllReminders().catch(console.error);
   }, 60 * 1000);
 
+  // Start Telegram integration if configured
+  telegramPoller = createTelegramPoller({
+    opencodeUrl: OPENCODE_URL,
+    getAuthHeader,
+    log,
+    logError,
+  });
+
+  if (telegramPoller) {
+    // Start polling in background (non-blocking)
+    telegramPoller.start().catch((error) => {
+      logError("[Telegram] Fatal error:", error);
+    });
+  }
+
   log("[Scheduler] Running. Press Ctrl+C to stop.");
 
   // Handle graceful shutdown
   process.on("SIGINT", () => {
     log("[Scheduler] Shutting down...");
+    telegramPoller?.stop();
     for (const job of activeJobs.values()) {
       job.cancel();
     }
@@ -412,6 +434,7 @@ async function main(): Promise<void> {
 
   process.on("SIGTERM", () => {
     log("[Scheduler] Received SIGTERM, shutting down...");
+    telegramPoller?.stop();
     for (const job of activeJobs.values()) {
       job.cancel();
     }
