@@ -10,9 +10,9 @@ import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { generateText } from "ai";
-import { createWorkersAI } from "workers-ai-provider";
 import { searchWeb, searchNews } from "./web-search";
 import { fetchPageAsMarkdown } from "./web-fetch";
+import { createModel, formatModelOptions } from "./models";
 
 // Embedding model: 768 dimensions
 const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
@@ -113,44 +113,132 @@ export class MemoryAgent extends McpAgent<Env> {
 
     this.server.tool(
       "get_context",
-      "Get your identity, current state, and recent context for session initialization. Call this at the start of each session.",
+      "IMPORTANT: Call this at the start of EVERY session to load your identity and state.",
       {},
       async () => {
-        const identityResults = await this.env.VECTORIZE.query(
-          await this.getEmbedding("identity persona who am I"),
-          {
-            topK: 1,
-            returnMetadata: "all",
-            filter: { type: { $eq: "identity" } },
-          },
-        );
+        const [identityResults, userResults, todayResults, recentResults] =
+          await Promise.all([
+            this.env.VECTORIZE.query(
+              await this.getEmbedding("identity persona who am I"),
+              {
+                topK: 1,
+                returnMetadata: "all",
+                filter: { type: { $eq: "identity" } },
+              },
+            ),
+            this.env.VECTORIZE.query(
+              await this.getEmbedding("user person human I work with"),
+              {
+                topK: 1,
+                returnMetadata: "all",
+                filter: { type: { $eq: "person" } },
+              },
+            ),
+            this.env.VECTORIZE.query(
+              await this.getEmbedding("today focus priorities current"),
+              {
+                topK: 1,
+                returnMetadata: "all",
+                filter: { type: { $eq: "today" } },
+              },
+            ),
+            this.env.VECTORIZE.query(
+              await this.getEmbedding("recent activity what happened"),
+              {
+                topK: 5,
+                returnMetadata: "all",
+                filter: { type: { $eq: "journal" } },
+              },
+            ),
+          ]);
 
-        const todayResults = await this.env.VECTORIZE.query(
-          await this.getEmbedding("today focus priorities current"),
-          {
-            topK: 1,
-            returnMetadata: "all",
-            filter: { type: { $eq: "today" } },
-          },
-        );
+        const identity = (
+          identityResults.matches[0]?.metadata as Record<string, string>
+        )?.content;
+        const user = (
+          userResults.matches[0]?.metadata as Record<string, string>
+        )?.content;
+        const today = (
+          todayResults.matches[0]?.metadata as Record<string, string>
+        )?.content;
+        const schedules = this.getSchedules();
 
-        const recentResults = await this.env.VECTORIZE.query(
-          await this.getEmbedding("recent activity what happened"),
-          {
-            topK: 5,
-            returnMetadata: "all",
-            filter: { type: { $eq: "journal" } },
-          },
-        );
+        // Detect first run - no identity means fresh agent
+        const isFirstRun = !identity;
 
-        const identity =
-          (identityResults.matches[0]?.metadata as Record<string, string>)
-            ?.content ?? "No identity configured yet.";
+        if (isFirstRun) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `# First Run - Onboarding Needed
 
-        const today =
-          (todayResults.matches[0]?.metadata as Record<string, string>)
-            ?.content ?? "No focus set for today.";
+I'm a new agent with no memory. I need to learn about my user before I can help effectively.
 
+## What to Learn
+
+Get to know the user through conversation. Some useful things to understand:
+- What they do and what they're working on
+- Links to their site, GitHub, LinkedIn, etc. (use \`fetch_page\` to read these and learn more about them)
+- How they prefer to communicate (concise vs detailed, formal vs casual)
+- Their timezone and typical work schedule (for scheduling reviews)
+- What they want help with
+
+Don't interrogate - have a natural conversation. Fetch any links they share to build a richer picture.
+
+## Setup Steps
+
+Once you understand the user:
+
+### 1. Create identity
+\`\`\`
+write_state(
+  type: "identity",
+  name: "identity", 
+  content: "# [Name]\\n\\nI am a stateful agent for [user]. I help with [focus areas].\\n\\n## Communication Style\\n[based on preferences]\\n\\n## Operating Principles\\n- Write state immediately when something happens\\n- Search memory before claiming ignorance\\n- Capture learnings in the moment"
+)
+\`\`\`
+
+### 2. Create user profile
+\`\`\`
+write_state(
+  type: "person",
+  name: "user",
+  content: "# [Name]\\n\\n[Bio from their links]\\n\\n## Role\\n[what they do]\\n\\n## Timezone\\n[e.g., Europe/London]\\n\\n## Work Schedule\\n[e.g., 9am-6pm]"
+)
+\`\`\`
+
+### 3. Set up end-of-day review
+\`\`\`
+schedule_recurring(
+  id: "end-of-day",
+  cron: "0 18 * * 1-5",  // 6pm weekdays - adjust to their schedule
+  description: "End of day review",
+  task: "reflect",
+  payload: "Review today's conversations and activity. Identify key learnings, decisions made, and open threads. Update relevant topics. Note anything to follow up on tomorrow.",
+  model: "thinking"  // Use thinking tier for deeper reflection
+)
+\`\`\`
+
+### 4. Set up weekly memory maintenance
+\`\`\`
+schedule_recurring(
+  id: "memory-maintenance",
+  cron: "0 3 * * 0",  // Sunday 3am
+  description: "Weekly memory maintenance", 
+  task: "cleanup",
+  payload: "Review all topics and journal entries from the past week. Consolidate related learnings. Prune outdated information. Identify patterns worth preserving as new topics.",
+  model: "thinking"  // Use thinking tier for analysis
+)
+\`\`\`
+
+Then you're ready to help.`,
+              },
+            ],
+          };
+        }
+
+        // Normal context response
         const recent = recentResults.matches
           .map((m) => {
             const meta = m.metadata as Record<string, string>;
@@ -158,11 +246,21 @@ export class MemoryAgent extends McpAgent<Env> {
           })
           .join("\n");
 
+        const scheduleSummary =
+          schedules.length > 0
+            ? schedules
+                .map((s) => {
+                  const payload = s.payload as { description?: string };
+                  return `- ${payload?.description ?? s.id}`;
+                })
+                .join("\n")
+            : "No schedules configured.";
+
         return {
           content: [
             {
               type: "text",
-              text: `## Identity\n${identity}\n\n## Today\n${today}\n\n## Recent Activity\n${recent || "No recent entries."}`,
+              text: `## Identity\n${identity}\n\n## User\n${user ?? "No user profile yet."}\n\n## Today\n${today ?? "No focus set for today."}\n\n## Recent Activity\n${recent || "No recent entries."}\n\n## Active Schedules\n${scheduleSummary}`,
             },
           ],
         };
@@ -536,8 +634,6 @@ export class MemoryAgent extends McpAgent<Env> {
         focus: z.string().optional().describe("Specific area to focus on"),
       },
       async ({ task, focus }) => {
-        const workersAI = createWorkersAI({ binding: this.env.AI });
-
         const prompts: Record<string, string> = {
           consolidate: `Review recent journal entries and consolidate them into updated topics. Look for patterns, recurring themes, and knowledge worth preserving. ${focus ? `Focus on: ${focus}` : ""}`,
           reflect: `Reflect on recent activity and identify insights, patterns, or things worth remembering. ${focus ? `Focus on: ${focus}` : ""}`,
@@ -560,9 +656,11 @@ export class MemoryAgent extends McpAgent<Env> {
           })
           .join("\n\n");
 
+        // Use "thinking" tier for refinement tasks - they need deeper reasoning
+        const model = createModel(this.env, "thinking");
+
         const { text } = await generateText({
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          model: workersAI("@cf/meta/llama-3.1-8b-instruct" as any),
+          model,
           prompt: `${prompts[task]}\n\n## Current Memory Context\n\n${contextText}\n\nProvide your analysis and any recommended updates.`,
         });
 
@@ -575,29 +673,145 @@ export class MemoryAgent extends McpAgent<Env> {
     );
 
     // ==========================================
-    // Scheduling Tool
+    // Scheduling Tools
     // ==========================================
 
+    const modelOptions = formatModelOptions();
+
     this.server.tool(
-      "schedule_task",
-      "Schedule a memory maintenance task to run in the future.",
+      "schedule_recurring",
+      `Schedule a recurring task using a cron expression. Examples: '0 9 * * 1-5' (9am weekdays), '0 18 * * *' (6pm daily), '0 3 * * 0' (3am Sunday).\n\n${modelOptions}`,
       {
-        delaySeconds: z.number().describe("Seconds from now to run the task"),
+        id: z.string().describe("Unique identifier for this schedule"),
+        cron: z
+          .string()
+          .describe("Cron expression (minute hour day month weekday)"),
+        description: z.string().describe("What this schedule does"),
         task: z
-          .enum(["consolidate", "reflect", "cleanup"])
-          .describe("Task to run"),
-        focus: z.string().optional().describe("Specific focus area"),
+          .enum(["consolidate", "reflect", "cleanup", "briefing", "custom"])
+          .describe("Type of task to run"),
+        payload: z
+          .string()
+          .optional()
+          .describe("Custom instructions for the task"),
+        model: z
+          .enum(["fast", "thinking", "local"])
+          .optional()
+          .describe(
+            "Model tier: 'fast' (quick), 'thinking' (deep reasoning), 'local' (free). Defaults based on task type.",
+          ),
       },
-      async ({ delaySeconds, task, focus }) => {
-        await this.schedule(delaySeconds, "runScheduledTask", { task, focus });
+      async ({ id, cron, description, task, payload, model }) => {
+        await this.schedule(cron, "runScheduledTask", {
+          id,
+          task,
+          description,
+          payload: payload ?? description,
+          model,
+        });
 
         return {
           content: [
             {
               type: "text",
-              text: `Scheduled "${task}" to run in ${delaySeconds} seconds`,
+              text: `Scheduled recurring task "${description}" with cron: ${cron}`,
             },
           ],
+        };
+      },
+    );
+
+    this.server.tool(
+      "schedule_once",
+      `Schedule a one-time task at a specific date/time.\n\n${modelOptions}`,
+      {
+        id: z.string().describe("Unique identifier for this schedule"),
+        datetime: z
+          .string()
+          .describe("ISO 8601 datetime (e.g., '2025-01-23T10:00:00')"),
+        description: z.string().describe("What this task does"),
+        task: z
+          .enum(["consolidate", "reflect", "cleanup", "briefing", "custom"])
+          .describe("Type of task to run"),
+        payload: z
+          .string()
+          .optional()
+          .describe("Custom instructions for the task"),
+        model: z
+          .enum(["fast", "thinking", "local"])
+          .optional()
+          .describe(
+            "Model tier: 'fast' (quick), 'thinking' (deep reasoning), 'local' (free). Defaults based on task type.",
+          ),
+      },
+      async ({ id, datetime, description, task, payload, model }) => {
+        const date = new Date(datetime);
+        await this.schedule(date, "runScheduledTask", {
+          id,
+          task,
+          description,
+          payload: payload ?? description,
+          model,
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Scheduled one-time task "${description}" for ${date.toISOString()}`,
+            },
+          ],
+        };
+      },
+    );
+
+    this.server.tool(
+      "list_schedules",
+      "List all scheduled tasks.",
+      {},
+      async () => {
+        const schedules = this.getSchedules();
+
+        if (schedules.length === 0) {
+          return {
+            content: [{ type: "text", text: "No scheduled tasks." }],
+          };
+        }
+
+        const formatted = schedules
+          .map((s) => {
+            const payload = s.payload as {
+              description?: string;
+              task?: string;
+            };
+            const desc = payload?.description ?? payload?.task ?? "Unknown";
+            const typeInfo =
+              s.type === "cron"
+                ? `cron: ${s.cron}`
+                : `once: ${new Date(s.time).toISOString()}`;
+            return `- **${s.id}**: ${desc}\n  ${typeInfo}\n  Next: ${s.time ? new Date(s.time).toISOString() : "N/A"}`;
+          })
+          .join("\n\n");
+
+        return {
+          content: [
+            { type: "text", text: `## Scheduled Tasks\n\n${formatted}` },
+          ],
+        };
+      },
+    );
+
+    this.server.tool(
+      "cancel_schedule",
+      "Cancel a scheduled task by ID.",
+      {
+        id: z.string().describe("ID of the schedule to cancel"),
+      },
+      async ({ id }) => {
+        await this.cancelSchedule(id);
+
+        return {
+          content: [{ type: "text", text: `Cancelled schedule: ${id}` }],
         };
       },
     );
@@ -607,13 +821,20 @@ export class MemoryAgent extends McpAgent<Env> {
   // Scheduled Task Handler
   // ==========================================
 
-  async runScheduledTask(data: { task: string; focus?: string }) {
-    console.log(`[SCHEDULED] Running task: ${data.task}`);
+  async runScheduledTask(data: {
+    id?: string;
+    task: string;
+    description?: string;
+    payload?: string;
+    focus?: string;
+    model?: string;
+  }) {
+    console.log(`[SCHEDULED] Running task: ${data.description ?? data.task}`);
 
-    const workersAI = createWorkersAI({ binding: this.env.AI });
-
+    // Get relevant context for the task
+    const searchTerm = data.payload ?? data.description ?? data.task;
     const context = await this.env.VECTORIZE.query(
-      await this.getEmbedding(data.focus ?? data.task),
+      await this.getEmbedding(searchTerm),
       {
         topK: 10,
         returnMetadata: "all",
@@ -627,27 +848,57 @@ export class MemoryAgent extends McpAgent<Env> {
       })
       .join("\n\n");
 
+    // Build task-specific prompts
+    const taskPrompts: Record<string, string> = {
+      consolidate:
+        "Review the context and consolidate learnings into updated topics. Identify patterns and knowledge worth preserving.",
+      reflect:
+        "Reflect on recent activity and identify insights, patterns, or things worth remembering.",
+      cleanup:
+        "Review memory for stale, outdated, or redundant entries. Identify what should be archived or updated.",
+      briefing:
+        "Prepare a briefing based on the context. Summarize what's important and what needs attention.",
+      custom: data.payload ?? "Execute the scheduled task.",
+    };
+
+    const prompt = `${taskPrompts[data.task] ?? taskPrompts.custom}
+
+## Context
+${contextText}
+
+Provide your analysis and any recommended actions.`;
+
+    // Select model - use specified tier or model ID
+    // Default to "thinking" for analysis tasks, "fast" for custom/briefing
+    const needsThinking = ["reflect", "cleanup", "consolidate"].includes(
+      data.task,
+    );
+    const defaultModel = needsThinking ? "thinking" : "fast";
+    const model = createModel(this.env, data.model ?? defaultModel);
+
     const { text } = await generateText({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      model: workersAI("@cf/meta/llama-3.1-8b-instruct" as any),
-      prompt: `Scheduled ${data.task} task. ${data.focus ? `Focus: ${data.focus}` : ""}\n\nContext:\n${contextText}\n\nPerform the ${data.task} operation and summarize what you did.`,
+      model,
+      prompt,
     });
 
-    const id = `journal-scheduled-${Date.now()}`;
+    // Log the result to journal
+    const journalId = `journal-scheduled-${Date.now()}`;
     await this.env.VECTORIZE.upsert([
       {
-        id,
+        id: journalId,
         values: await this.getEmbedding(`scheduled ${data.task}: ${text}`),
         metadata: {
           type: "journal",
           topic: `scheduled-${data.task}`,
           content: text,
+          scheduleId: data.id ?? "",
+          description: data.description ?? "",
           timestamp: new Date().toISOString(),
         },
       },
     ]);
 
-    console.log(`[SCHEDULED] Task complete: ${data.task}`);
+    console.log(`[SCHEDULED] Task complete: ${data.description ?? data.task}`);
   }
 
   // ==========================================
@@ -675,7 +926,6 @@ const allowedWorkers = new Set([
   "agw.ai.cfdata.org",
 ]);
 
-
 export default {
   async fetch(
     request: Request,
@@ -695,7 +945,7 @@ export default {
 
     // MCP endpoint
     if (url.pathname === "/mcp") {
-      console.log('headers:', [...request.headers.entries()]);
+      console.log("headers:", [...request.headers.entries()]);
 
       // This can't be faked by end users, only Cloudflare sets this header
       const cfWorker = request.headers.get("cf-worker");

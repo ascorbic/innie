@@ -3,13 +3,13 @@
   "name": "macrodata",
   "main": "src/index.ts",
   "compatibility_date": "2025-01-20",
-  "compatibility_flags": ["nodejs_compat"],
-
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   // Workers AI for embeddings + cheap tasks
   "ai": {
     "binding": "AI",
   },
-
   // Vectorize for semantic search
   "vectorize": [
     {
@@ -17,7 +17,6 @@
       "index_name": "macrodata-memory",
     },
   ],
-
   // Durable Objects for per-user state + scheduling
   "durable_objects": {
     "bindings": [
@@ -27,29 +26,27 @@
       },
     ],
   },
-
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["MemoryAgent"],
+      "new_sqlite_classes": [
+        "MemoryAgent"
+      ],
     },
   ],
-
   // Enable observability
   "observability": {
     "enabled": true,
   },
-
   "vars": {
     "ENVIRONMENT": "development",
+    // AI Gateway config (for external model providers)
+    "CF_AIG_GATEWAY_ID": "outie",
   },
-
   // Secrets (set via wrangler secret put):
   // - BRAVE_SEARCH_API_KEY: For web search
-  // - CF_API_TOKEN: For Browser Rendering API
-  // - CF_ACCOUNT_ID: For Browser Rendering API
-  // - ANTHROPIC_API_KEY: Optional, for deep refine tasks
-  // - OPENAI_API_KEY: Optional, for deep refine tasks
+  // - CF_API_TOKEN: For AI Gateway auth (BYOK) + Browser Rendering API
+  // - ANTHROPIC_API_KEY: Optional, for Anthropic models (or use BYOK via gateway)
   //
   // Access JWT validation (optional - set to require Cloudflare Access):
   // - ACCESS_TEAM_DOMAIN: Your team domain (e.g., "https://myteam.cloudflareaccess.com")
