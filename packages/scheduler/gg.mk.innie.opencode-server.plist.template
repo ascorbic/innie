@@ -7,22 +7,22 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/mkane/.nvm/versions/node/v22.21.0/bin/opencode</string>
+        <string>{{OPENCODE_PATH}}</string>
         <string>serve</string>
         <string>--port</string>
-        <string>4097</string>
+        <string>{{OPENCODE_PORT}}</string>
     </array>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>OPENCODE_SERVER_PASSWORD</key>
-        <string>bxFdC5x4xZlXT14RRtBqSmQ8M01sXqX</string>
+        <string>{{OPENCODE_SERVER_PASSWORD}}</string>
         <key>HOME</key>
-        <string>/Users/mkane</string>
+        <string>{{HOME}}</string>
         <key>PATH</key>
-        <string>/Users/mkane/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>{{PATH}}</string>
         <key>NODE_EXTRA_CA_CERTS</key>
-        <string>/Users/mkane/.local/share/cloudflare-warp-certs/CloudflareRootCertificateCombined.pem</string>
+        <string>{{NODE_EXTRA_CA_CERTS}}</string>
     </dict>
 
     <key>RunAtLoad</key>
@@ -32,12 +32,12 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/mkane/Repos/innie-memory/logs/opencode-server.log</string>
+    <string>{{MEMORY_DIR}}/logs/opencode-server.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/mkane/Repos/innie-memory/logs/opencode-server.error.log</string>
+    <string>{{MEMORY_DIR}}/logs/opencode-server.error.log</string>
 
     <key>WorkingDirectory</key>
-    <string>/Users/mkane/Repos/innie</string>
+    <string>{{REPO_DIR}}</string>
 </dict>
 </plist>

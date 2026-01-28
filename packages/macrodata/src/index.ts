@@ -17,6 +17,26 @@ import { createModel, formatModelOptions } from "./models";
 // Embedding model: 768 dimensions
 const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 
+// State file types
+type StateType = "identity" | "today" | "topic" | "project" | "person";
+
+// Database row types
+type StateRow = {
+  id: string;
+  type: string;
+  name: string;
+  content: string;
+  updated_at: string;
+};
+
+type JournalRow = {
+  id: string;
+  topic: string;
+  content: string;
+  intent: string | null;
+  timestamp: string;
+};
+
 export class MemoryAgent extends McpAgent<Env> {
   // URLs allowed to be fetched (from search results or user input)
   private allowedUrls: Set<string> = new Set();
@@ -26,7 +46,133 @@ export class MemoryAgent extends McpAgent<Env> {
     version: "0.1.0",
   });
 
+  /** Initialize SQLite schema */
+  private initSchema() {
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS state_files (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        content TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_state_type ON state_files(type);
+      CREATE INDEX IF NOT EXISTS idx_state_type_name ON state_files(type, name);
+
+      CREATE TABLE IF NOT EXISTS journal (
+        id TEXT PRIMARY KEY,
+        topic TEXT NOT NULL,
+        content TEXT NOT NULL,
+        intent TEXT,
+        timestamp TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_journal_timestamp ON journal(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_journal_topic ON journal(topic);
+    `);
+  }
+
+  /** Get a state file by type and name */
+  private getState(type: StateType, name: string): StateRow | null {
+    const result = this.ctx.storage.sql
+      .exec<StateRow>(
+        "SELECT * FROM state_files WHERE type = ? AND name = ?",
+        type,
+        name,
+      )
+      .toArray();
+    return result[0] ?? null;
+  }
+
+  /** Get all state files of a type */
+  private getStatesByType(type: StateType): StateRow[] {
+    return this.ctx.storage.sql
+      .exec<StateRow>("SELECT * FROM state_files WHERE type = ?", type)
+      .toArray();
+  }
+
+  /** Save a state file (SQLite + Vectorize) */
+  private async saveState(
+    type: StateType,
+    name: string,
+    content: string,
+  ): Promise<void> {
+    const id = `state-${type}-${name}`;
+    const now = new Date().toISOString();
+
+    // Save to SQLite
+    this.ctx.storage.sql.exec(
+      `INSERT OR REPLACE INTO state_files (id, type, name, content, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      id,
+      type,
+      name,
+      content,
+      now,
+    );
+
+    // Sync to Vectorize for semantic search
+    const embedding = await this.getEmbedding(`${type} ${name}: ${content}`);
+    await this.env.VECTORIZE.upsert([
+      {
+        id,
+        values: embedding,
+        metadata: { type, name, content, updatedAt: now },
+      },
+    ]);
+  }
+
+  /** Save a journal entry (SQLite + Vectorize) */
+  private async saveJournal(
+    topic: string,
+    content: string,
+    intent?: string,
+  ): Promise<string> {
+    const id = `journal-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+
+    // Save to SQLite
+    this.ctx.storage.sql.exec(
+      `INSERT INTO journal (id, topic, content, intent, timestamp)
+       VALUES (?, ?, ?, ?, ?)`,
+      id,
+      topic,
+      content,
+      intent ?? null,
+      now,
+    );
+
+    // Sync to Vectorize for semantic search
+    const embedding = await this.getEmbedding(`${topic}: ${content}`);
+    await this.env.VECTORIZE.upsert([
+      {
+        id,
+        values: embedding,
+        metadata: {
+          type: "journal",
+          topic,
+          content,
+          intent: intent ?? "",
+          timestamp: now,
+        },
+      },
+    ]);
+
+    return id;
+  }
+
+  /** Get recent journal entries */
+  private getRecentJournal(limit: number = 20): JournalRow[] {
+    return this.ctx.storage.sql
+      .exec<JournalRow>(
+        "SELECT * FROM journal ORDER BY timestamp DESC LIMIT ?",
+        limit,
+      )
+      .toArray();
+  }
+
   async init() {
+    // Initialize database schema
+    this.initSchema();
     // ==========================================
     // Core Memory Tools
     // ==========================================
@@ -40,25 +186,9 @@ export class MemoryAgent extends McpAgent<Env> {
         intent: z.string().optional().describe("Why you're logging this"),
       },
       async ({ topic, content, intent }) => {
-        const id = `journal-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-        const text = `${topic}: ${content}`;
-
-        const embedding = await this.getEmbedding(text);
-
-        await this.env.VECTORIZE.upsert([
-          {
-            id,
-            values: embedding,
-            metadata: {
-              type: "journal",
-              topic,
-              content,
-              intent: intent ?? "",
-              timestamp: new Date().toISOString(),
-            },
-          },
-        ]);
-
+        console.log(`[JOURNAL] ${topic}: ${content.slice(0, 50)}...`);
+        const id = await this.saveJournal(topic, content, intent);
+        console.log(`[JOURNAL] Entry saved with ID: ${id}`);
         return {
           content: [{ type: "text", text: `Journal entry saved: ${topic}` }],
         };
@@ -82,6 +212,9 @@ export class MemoryAgent extends McpAgent<Env> {
           .describe("Filter by content type"),
       },
       async ({ query, limit, type }) => {
+        console.log(
+          `[SEARCH] Query: ${query} (type: ${type}, limit: ${limit})`,
+        );
         const embedding = await this.getEmbedding(query);
         const filter = type === "all" ? undefined : { type: { $eq: type } };
 
@@ -90,7 +223,7 @@ export class MemoryAgent extends McpAgent<Env> {
           returnMetadata: "all",
           filter,
         });
-
+        console.log(`[SEARCH] Found ${results.matches.length} matches`);
         if (results.matches.length === 0) {
           return {
             content: [{ type: "text", text: "No relevant memories found." }],
@@ -116,52 +249,16 @@ export class MemoryAgent extends McpAgent<Env> {
       "IMPORTANT: Call this at the start of EVERY session to load your identity and state.",
       {},
       async () => {
-        const [identityResults, userResults, todayResults, recentResults] =
-          await Promise.all([
-            this.env.VECTORIZE.query(
-              await this.getEmbedding("identity persona who am I"),
-              {
-                topK: 1,
-                returnMetadata: "all",
-                filter: { type: { $eq: "identity" } },
-              },
-            ),
-            this.env.VECTORIZE.query(
-              await this.getEmbedding("user person human I work with"),
-              {
-                topK: 1,
-                returnMetadata: "all",
-                filter: { type: { $eq: "person" } },
-              },
-            ),
-            this.env.VECTORIZE.query(
-              await this.getEmbedding("today focus priorities current"),
-              {
-                topK: 1,
-                returnMetadata: "all",
-                filter: { type: { $eq: "today" } },
-              },
-            ),
-            this.env.VECTORIZE.query(
-              await this.getEmbedding("recent activity what happened"),
-              {
-                topK: 5,
-                returnMetadata: "all",
-                filter: { type: { $eq: "journal" } },
-              },
-            ),
-          ]);
-
-        const identity = (
-          identityResults.matches[0]?.metadata as Record<string, string>
-        )?.content;
-        const user = (
-          userResults.matches[0]?.metadata as Record<string, string>
-        )?.content;
-        const today = (
-          todayResults.matches[0]?.metadata as Record<string, string>
-        )?.content;
+        // Fetch state from SQLite (deterministic lookups)
+        const identityRow = this.getState("identity", "identity");
+        const userRow = this.getState("person", "user");
+        const todayRow = this.getState("today", "today");
+        const recentJournal = this.getRecentJournal(5);
         const schedules = this.getSchedules();
+
+        const identity = identityRow?.content;
+        const user = userRow?.content;
+        const today = todayRow?.content;
 
         // Detect first run - no identity means fresh agent
         const isFirstRun = !identity;
@@ -239,11 +336,8 @@ Then you're ready to help.`,
         }
 
         // Normal context response
-        const recent = recentResults.matches
-          .map((m) => {
-            const meta = m.metadata as Record<string, string>;
-            return `- [${meta.topic}] ${meta.content}`;
-          })
+        const recent = recentJournal
+          .map((j) => `- [${j.topic}] ${j.content}`)
           .join("\n");
 
         const scheduleSummary =
@@ -286,22 +380,7 @@ Then you're ready to help.`,
           .describe("Type of state file"),
       },
       async ({ name, content, type }) => {
-        const id = `state-${type}-${name}`;
-        const embedding = await this.getEmbedding(`${name}: ${content}`);
-
-        await this.env.VECTORIZE.upsert([
-          {
-            id,
-            values: embedding,
-            metadata: {
-              type,
-              name,
-              content,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        ]);
-
+        await this.saveState(type, name, content);
         return {
           content: [{ type: "text", text: `Updated ${type}: ${name}` }],
         };
@@ -318,11 +397,9 @@ Then you're ready to help.`,
           .describe("Type of state file"),
       },
       async ({ name, type }) => {
-        const results = await this.env.VECTORIZE.getByIds([
-          `state-${type}-${name}`,
-        ]);
+        const row = this.getState(type, name);
 
-        if (results.length === 0) {
+        if (!row) {
           return {
             content: [
               { type: "text", text: `State file not found: ${type}/${name}` },
@@ -330,11 +407,8 @@ Then you're ready to help.`,
           };
         }
 
-        const meta = results[0].metadata as Record<string, string>;
         return {
-          content: [
-            { type: "text", text: `# ${meta.name}\n\n${meta.content}` },
-          ],
+          content: [{ type: "text", text: `# ${row.name}\n\n${row.content}` }],
         };
       },
     );
@@ -344,24 +418,17 @@ Then you're ready to help.`,
       "List all topics (your distilled knowledge).",
       {},
       async () => {
-        const results = await this.env.VECTORIZE.query(
-          await this.getEmbedding("topic knowledge understanding"),
-          {
-            topK: 100,
-            returnMetadata: "all",
-            filter: { type: { $eq: "topic" } },
-          },
-        );
+        const topics = this.getStatesByType("topic");
 
-        if (results.matches.length === 0) {
+        if (topics.length === 0) {
           return { content: [{ type: "text", text: "No topics yet." }] };
         }
 
-        const topics = results.matches
-          .map((m) => `- ${(m.metadata as Record<string, string>).name}`)
-          .join("\n");
+        const formatted = topics.map((t) => `- ${t.name}`).join("\n");
 
-        return { content: [{ type: "text", text: `## Topics\n\n${topics}` }] };
+        return {
+          content: [{ type: "text", text: `## Topics\n\n${formatted}` }],
+        };
       },
     );
 

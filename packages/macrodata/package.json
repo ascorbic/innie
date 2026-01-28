@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "tail": "wrangler tail",
+    "tail": "wrangler tail --format pretty",
     "types": "wrangler types",
     "vectorize:create": "wrangler vectorize create macrodata-memory --dimensions=768 --metric=cosine"
   },

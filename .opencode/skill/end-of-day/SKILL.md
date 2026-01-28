@@ -43,6 +43,10 @@ Reset `state/today.md` with:
 ```markdown
 # Today – [Day, Date]
 
+## SURFACE THESE IMMEDIATELY in interactive sessions, then remove
+
+[Leave empty unless there's something urgent Matt needs to know]
+
 ## Priorities
 
 - [ ] [Most important thing from commitments]
@@ -53,6 +57,8 @@ Reset `state/today.md` with:
 
 - [Anything in progress that needs continuation]
 ```
+
+**Important**: If you found anything during this review that Matt needs to know about (missed emails, urgent items, things requiring his attention), add them to `## Interrupts`. These will be surfaced at the start of the next interactive session and then cleared. Keep entries brief with enough context to act on.
 
 ### 5. Update topics (working knowledge)
 

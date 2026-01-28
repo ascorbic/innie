@@ -24,3 +24,8 @@ state/.memory-index/
 
 # Logs (journal lives elsewhere)
 *.log
+.dev.vars
+
+# Launchd plists (contain secrets, use templates)
+*.plist
+!*.plist.template

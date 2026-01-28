@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>gg.mk.innie.scheduler</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{NODE_PATH}}</string>
+        <string>{{REPO_DIR}}/packages/scheduler/dist/index.mjs</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>MEMORY_DIR</key>
+        <string>{{MEMORY_DIR}}</string>
+        <key>OPENCODE_SERVER_PASSWORD</key>
+        <string>{{OPENCODE_SERVER_PASSWORD}}</string>
+        <key>OPENCODE_PORT</key>
+        <string>{{OPENCODE_PORT}}</string>
+        <key>TELEGRAM_BOT_TOKEN</key>
+        <string>{{TELEGRAM_BOT_TOKEN}}</string>
+        <key>TELEGRAM_CHAT_ID</key>
+        <string>{{TELEGRAM_CHAT_ID}}</string>
+        <key>NODE_EXTRA_CA_CERTS</key>
+        <string>{{NODE_EXTRA_CA_CERTS}}</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{MEMORY_DIR}}/logs/scheduler.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{MEMORY_DIR}}/logs/scheduler.error.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>{{REPO_DIR}}</string>
+</dict>
+</plist>

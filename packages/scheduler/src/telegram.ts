@@ -135,11 +135,14 @@ export class TelegramPoller {
 
     try {
       const url = new URL(
-        `https://api.telegram.org/bot${this.config.botToken}/getUpdates`
+        `https://api.telegram.org/bot${this.config.botToken}/getUpdates`,
       );
       url.searchParams.set("timeout", timeout.toString());
       url.searchParams.set("offset", (this.lastUpdateId + 1).toString());
-      url.searchParams.set("allowed_updates", JSON.stringify(["message", "callback_query"]));
+      url.searchParams.set(
+        "allowed_updates",
+        JSON.stringify(["message", "callback_query"]),
+      );
 
       const response = await fetch(url.toString(), {
         signal: this.abortController.signal,
@@ -188,7 +191,7 @@ export class TelegramPoller {
     // Security: only respond to allowed chat
     if (this.config.chatId && message.chat.id !== this.config.chatId) {
       this.config.log(
-        `[Telegram] Ignoring message from unauthorized chat: ${message.chat.id}`
+        `[Telegram] Ignoring message from unauthorized chat: ${message.chat.id}`,
       );
       return;
     }
@@ -198,14 +201,14 @@ export class TelegramPoller {
       // Get the largest photo (last in array)
       const photo = message.photo[message.photo.length - 1];
       this.config.log(
-        `[Telegram] Photo from ${message.from.username || message.from.first_name}${message.caption ? `: ${message.caption.slice(0, 30)}...` : ""}`
+        `[Telegram] Photo from ${message.from.username || message.from.first_name}${message.caption ? `: ${message.caption.slice(0, 30)}...` : ""}`,
       );
       await this.handleFileMessage(
         photo.file_id,
         message.caption,
         message.chat.id,
         "photo",
-        `photo_${photo.file_unique_id}.jpg`
+        `photo_${photo.file_unique_id}.jpg`,
       );
       return;
     }
@@ -213,14 +216,14 @@ export class TelegramPoller {
     // Handle documents
     if (message.document) {
       this.config.log(
-        `[Telegram] Document from ${message.from.username || message.from.first_name}: ${message.document.file_name || "unnamed"}`
+        `[Telegram] Document from ${message.from.username || message.from.first_name}: ${message.document.file_name || "unnamed"}`,
       );
       await this.handleFileMessage(
         message.document.file_id,
         message.caption,
         message.chat.id,
         "document",
-        message.document.file_name || `doc_${message.document.file_unique_id}`
+        message.document.file_name || `doc_${message.document.file_unique_id}`,
       );
       return;
     }
@@ -228,7 +231,7 @@ export class TelegramPoller {
     // Handle text messages
     if (message.text) {
       this.config.log(
-        `[Telegram] Message from ${message.from.username || message.from.first_name}: ${message.text.slice(0, 50)}...`
+        `[Telegram] Message from ${message.from.username || message.from.first_name}: ${message.text.slice(0, 50)}...`,
       );
       await this.routeToOpencode(message.text, message.chat.id);
       return;
@@ -246,7 +249,7 @@ export class TelegramPoller {
     caption: string | undefined,
     chatId: number,
     fileType: "photo" | "document",
-    fileName: string
+    fileName: string,
   ): Promise<void> {
     try {
       // Download the file
@@ -264,7 +267,10 @@ export class TelegramPoller {
       await this.routeToOpencodeWithFile(text, localPath, chatId);
     } catch (error) {
       this.config.logError(`[Telegram] Error handling ${fileType}:`, error);
-      await this.sendTelegramMessage(chatId, `⚠️ Failed to process ${fileType}`);
+      await this.sendTelegramMessage(
+        chatId,
+        `⚠️ Failed to process ${fileType}`,
+      );
     }
   }
 
@@ -273,7 +279,7 @@ export class TelegramPoller {
    */
   private async downloadFile(
     fileId: string,
-    fileName: string
+    fileName: string,
   ): Promise<string | null> {
     try {
       // Get file info from Telegram
@@ -283,7 +289,7 @@ export class TelegramPoller {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ file_id: fileId }),
-        }
+        },
       );
 
       const fileInfo = (await fileInfoRes.json()) as {
@@ -301,7 +307,9 @@ export class TelegramPoller {
       const fileRes = await fetch(fileUrl);
 
       if (!fileRes.ok) {
-        this.config.logError(`[Telegram] Failed to download file: ${fileRes.status}`);
+        this.config.logError(
+          `[Telegram] Failed to download file: ${fileRes.status}`,
+        );
         return null;
       }
 
@@ -338,14 +346,14 @@ export class TelegramPoller {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ callback_query_id: query.id }),
-      }
+      },
     );
 
     if (query.data && query.message) {
       this.config.log(`[Telegram] Callback: ${query.data}`);
       await this.routeToOpencode(
         `[Button pressed: ${query.data}]`,
-        query.message.chat.id
+        query.message.chat.id,
       );
     }
   }
@@ -356,14 +364,17 @@ export class TelegramPoller {
   private async routeToOpencode(text: string, chatId: number): Promise<void> {
     try {
       // Check if OpenCode is available
-      const healthRes = await fetch(`${this.config.opencodeUrl}/global/health`, {
-        headers: this.config.getAuthHeader(),
-      });
+      const healthRes = await fetch(
+        `${this.config.opencodeUrl}/global/health`,
+        {
+          headers: this.config.getAuthHeader(),
+        },
+      );
 
       if (!healthRes.ok) {
         await this.sendTelegramMessage(
           chatId,
-          "⚠️ OpenCode server is not available"
+          "⚠️ OpenCode server is not available",
         );
         return;
       }
@@ -392,7 +403,7 @@ export class TelegramPoller {
         hour12: true,
       });
 
-      const payload = `[Telegram message received]\nTime: ${now}\n\n${text}`;
+      const payload = `[Telegram message received]\nTime: ${now}\n\n${text}\n\nRespond using the send_telegram tool.`;
 
       // Send to OpenCode
       const res = await fetch(
@@ -406,14 +417,14 @@ export class TelegramPoller {
           body: JSON.stringify({
             parts: [{ type: "text", text: payload }],
           }),
-        }
+        },
       );
 
       if (res.ok) {
         this.config.log(`[Telegram] Sent to session ${sessionId}`);
       } else {
         this.config.logError(
-          `[Telegram] Failed to send: ${res.status} ${res.statusText}`
+          `[Telegram] Failed to send: ${res.status} ${res.statusText}`,
         );
         await this.sendTelegramMessage(chatId, "⚠️ Failed to process message");
       }
@@ -429,18 +440,21 @@ export class TelegramPoller {
   private async routeToOpencodeWithFile(
     text: string,
     filePath: string,
-    chatId: number
+    chatId: number,
   ): Promise<void> {
     try {
       // Check if OpenCode is available
-      const healthRes = await fetch(`${this.config.opencodeUrl}/global/health`, {
-        headers: this.config.getAuthHeader(),
-      });
+      const healthRes = await fetch(
+        `${this.config.opencodeUrl}/global/health`,
+        {
+          headers: this.config.getAuthHeader(),
+        },
+      );
 
       if (!healthRes.ok) {
         await this.sendTelegramMessage(
           chatId,
-          "⚠️ OpenCode server is not available"
+          "⚠️ OpenCode server is not available",
         );
         return;
       }
@@ -468,7 +482,7 @@ export class TelegramPoller {
         hour12: true,
       });
 
-      const payload = `[Telegram message received]\nTime: ${now}\n\n${text}\n\nNote: Use the Read tool to view the file at the path above.`;
+      const payload = `[Telegram message received]\nTime: ${now}\n\n${text}\n\nNote: Use the Read tool to view the file at the path above. Respond using the send_telegram tool.`;
 
       // Send to OpenCode
       const res = await fetch(
@@ -482,14 +496,14 @@ export class TelegramPoller {
           body: JSON.stringify({
             parts: [{ type: "text", text: payload }],
           }),
-        }
+        },
       );
 
       if (res.ok) {
         this.config.log(`[Telegram] Sent file message to session ${sessionId}`);
       } else {
         this.config.logError(
-          `[Telegram] Failed to send: ${res.status} ${res.statusText}`
+          `[Telegram] Failed to send: ${res.status} ${res.statusText}`,
         );
         await this.sendTelegramMessage(chatId, "⚠️ Failed to process file");
       }
@@ -568,7 +582,7 @@ export class TelegramPoller {
         {
           method: "POST",
           headers: this.config.getAuthHeader(),
-        }
+        },
       );
 
       if (res.ok) {
@@ -584,7 +598,7 @@ export class TelegramPoller {
    */
   private async sendTelegramMessage(
     chatId: number,
-    text: string
+    text: string,
   ): Promise<void> {
     await fetch(
       `https://api.telegram.org/bot${this.config.botToken}/sendMessage`,
@@ -596,7 +610,7 @@ export class TelegramPoller {
           text,
           parse_mode: "Markdown",
         }),
-      }
+      },
     );
   }
 
@@ -609,11 +623,13 @@ export class TelegramPoller {
  * Create and start a Telegram poller if configured
  */
 export function createTelegramPoller(
-  config: Omit<TelegramConfig, "botToken" | "chatId">
+  config: Omit<TelegramConfig, "botToken" | "chatId">,
 ): TelegramPoller | null {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) {
-    config.log("[Telegram] No TELEGRAM_BOT_TOKEN set, skipping Telegram integration");
+    config.log(
+      "[Telegram] No TELEGRAM_BOT_TOKEN set, skipping Telegram integration",
+    );
     return null;
   }
 
@@ -624,7 +640,9 @@ export function createTelegramPoller(
   if (chatId) {
     config.log(`[Telegram] Restricted to chat ID: ${chatId}`);
   } else {
-    config.log("[Telegram] Warning: No TELEGRAM_CHAT_ID set - bot will respond to any chat");
+    config.log(
+      "[Telegram] Warning: No TELEGRAM_CHAT_ID set - bot will respond to any chat",
+    );
   }
 
   return new TelegramPoller({
