@@ -12,15 +12,13 @@
  * - OPENCODE_PORT: OpenCode server port (default: 4097)
  * - OPENCODE_SERVER_PASSWORD: Password for HTTP Basic Auth (required)
  * - OPENCODE_SERVER_USERNAME: Username for HTTP Basic Auth (default: opencode)
- * - TELEGRAM_BOT_TOKEN: Telegram bot token for message integration (optional)
- * - TELEGRAM_CHAT_ID: Allowed Telegram chat ID for security (optional)
+
  */
 
 import { watch, existsSync, readdirSync } from "node:fs";
 import { readFile, writeFile, unlink, mkdir } from "node:fs/promises";
 import path from "node:path";
 import schedule from "node-schedule";
-import { createTelegramPoller, type TelegramPoller } from "./telegram.js";
 
 const MEMORY_DIR =
   process.env.MEMORY_DIR || path.join(process.env.HOME || "", ".innie");
@@ -60,9 +58,6 @@ const activeJobs = new Map<string, schedule.Job>();
 
 // Track file mtimes to detect changes
 const fileMtimes = new Map<string, number>();
-
-// Telegram poller instance
-let telegramPoller: TelegramPoller | null = null;
 
 /**
  * Log with ISO timestamp
@@ -162,33 +157,13 @@ async function isServerRunning(): Promise<boolean> {
 }
 
 /**
- * Get or create a session for scheduled tasks
+ * Create a new session for a scheduled task
  */
-async function getOrCreateSession(): Promise<string> {
-  // List existing sessions
-  const listRes = await fetch(`${OPENCODE_URL}/session`, {
-    headers: getAuthHeader(),
-  });
-  if (!listRes.ok) {
-    throw new Error(`Failed to list sessions: ${listRes.status}`);
-  }
-
-  const sessions = (await listRes.json()) as Array<{
-    id: string;
-    title?: string;
-  }>;
-
-  // Look for an existing scheduler session
-  const schedulerSession = sessions.find((s) => s.title === "Scheduler");
-  if (schedulerSession) {
-    return schedulerSession.id;
-  }
-
-  // Create a new session for scheduled tasks
+async function createSession(title: string): Promise<string> {
   const createRes = await fetch(`${OPENCODE_URL}/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...getAuthHeader() },
-    body: JSON.stringify({ title: "Scheduler" }),
+    body: JSON.stringify({ title }),
   });
 
   if (!createRes.ok) {
@@ -196,7 +171,6 @@ async function getOrCreateSession(): Promise<string> {
   }
 
   const newSession = (await createRes.json()) as { id: string };
-  log(`[Scheduler] Created new session: ${newSession.id}`);
   return newSession.id;
 }
 
@@ -224,9 +198,10 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
   const payload = `[Scheduled reminder: ${reminder.description}]\nCurrent time: ${now}\n\n${reminder.payload}`;
 
   try {
-    const sessionId = await getOrCreateSession();
+    const sessionId = await createSession(reminder.description);
+    log(`[Scheduler] Created session ${sessionId}`);
 
-    // Send message asynchronously (don't wait for response)
+    // Send message asynchronously (fire and forget)
     const body: Record<string, unknown> = {
       parts: [{ type: "text", text: payload }],
     };
@@ -248,7 +223,7 @@ async function triggerOpencode(reminder: ScheduledReminder): Promise<void> {
     );
 
     if (res.ok) {
-      log(`[Scheduler] Sent to session ${sessionId}: ${reminder.description}`);
+      log(`[Scheduler] Triggered: ${reminder.description}`);
       await markReminderRun(reminder.id);
 
       // Remove one-shot reminders after they fire
@@ -405,27 +380,11 @@ async function main(): Promise<void> {
     syncAllReminders().catch(console.error);
   }, 60 * 1000);
 
-  // Start Telegram integration if configured
-  telegramPoller = createTelegramPoller({
-    opencodeUrl: OPENCODE_URL,
-    getAuthHeader,
-    log,
-    logError,
-  });
-
-  if (telegramPoller) {
-    // Start polling in background (non-blocking)
-    telegramPoller.start().catch((error) => {
-      logError("[Telegram] Fatal error:", error);
-    });
-  }
-
   log("[Scheduler] Running. Press Ctrl+C to stop.");
 
   // Handle graceful shutdown
   process.on("SIGINT", () => {
     log("[Scheduler] Shutting down...");
-    telegramPoller?.stop();
     for (const job of activeJobs.values()) {
       job.cancel();
     }
@@ -434,7 +393,6 @@ async function main(): Promise<void> {
 
   process.on("SIGTERM", () => {
     log("[Scheduler] Received SIGTERM, shutting down...");
-    telegramPoller?.stop();
     for (const job of activeJobs.values()) {
       job.cancel();
     }

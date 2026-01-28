@@ -9,7 +9,7 @@ import "./types"; // Extend Env with secrets
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { generateText } from "ai";
+import { generateText, tool, stepCountIs } from "ai";
 import { searchWeb, searchNews } from "./web-search";
 import { fetchPageAsMarkdown } from "./web-fetch";
 import { createModel, formatModelOptions } from "./models";
@@ -168,6 +168,180 @@ export class MemoryAgent extends McpAgent<Env> {
         limit,
       )
       .toArray();
+  }
+
+  /** Search memory via Vectorize */
+  private async searchMemory(
+    query: string,
+    options: {
+      limit?: number;
+      type?: "all" | "journal" | "topic" | "summary";
+    } = {},
+  ): Promise<
+    Array<{
+      type: string;
+      content: string;
+      topic?: string;
+      name?: string;
+      score: number;
+    }>
+  > {
+    const { limit = 5, type = "all" } = options;
+    const embedding = await this.getEmbedding(query);
+    const filter = type === "all" ? undefined : { type: { $eq: type } };
+
+    const results = await this.env.VECTORIZE.query(embedding, {
+      topK: limit,
+      returnMetadata: "all",
+      filter,
+    });
+
+    return results.matches.map((m) => {
+      const meta = m.metadata as Record<string, string>;
+      return {
+        type: meta.type,
+        content: meta.content,
+        topic: meta.topic,
+        name: meta.name,
+        score: m.score,
+      };
+    });
+  }
+
+  /** Get context for sub-agents (identity, user, today) */
+  private getAgentContext(): string {
+    const identity = this.getState("identity", "identity");
+    const user = this.getState("person", "user");
+    const today = this.getState("today", "today");
+
+    const parts: string[] = [];
+    if (identity) parts.push(`## Identity\n${identity.content}`);
+    if (user) parts.push(`## User\n${user.content}`);
+    if (today) parts.push(`## Today\n${today.content}`);
+
+    return parts.join("\n\n");
+  }
+
+  /** Create tools for sub-agent use with AI SDK */
+  private createAgentTools() {
+    const self = this;
+    return {
+      write_state: tool({
+        description:
+          "Write or update a state file (identity, today, topic, project, person)",
+        inputSchema: z.object({
+          type: z.enum(["identity", "today", "topic", "project", "person"]),
+          name: z.string().describe("State file name"),
+          content: z.string().describe("Content to write"),
+        }),
+        execute: async ({ type, name, content }) => {
+          await self.saveState(type as StateType, name, content);
+          return `Updated ${type}: ${name}`;
+        },
+      }),
+      read_state: tool({
+        description: "Read a state file by type and name",
+        inputSchema: z.object({
+          type: z.enum(["identity", "today", "topic", "project", "person"]),
+          name: z.string().describe("State file name"),
+        }),
+        execute: async ({ type, name }) => {
+          const row = self.getState(type as StateType, name);
+          return row ? row.content : `Not found: ${type}/${name}`;
+        },
+      }),
+      log_journal: tool({
+        description: "Record an observation, decision, or thing to remember",
+        inputSchema: z.object({
+          topic: z.string().describe("Short topic/category"),
+          content: z.string().describe("The journal entry content"),
+        }),
+        execute: async ({ topic, content }) => {
+          await self.saveJournal(topic, content);
+          return `Journal entry saved: ${topic}`;
+        },
+      }),
+      search_memory: tool({
+        description: "Search memory using semantic search",
+        inputSchema: z.object({
+          query: z.string().describe("What to search for"),
+          limit: z.number().optional().default(5),
+        }),
+        execute: async ({ query, limit }) => {
+          const results = await self.searchMemory(query, { limit });
+          if (results.length === 0) return "No relevant memories found.";
+          return results
+            .map((r) => `[${r.type}] ${r.topic ?? r.name ?? ""}: ${r.content}`)
+            .join("\n\n");
+        },
+      }),
+      list_topics: tool({
+        description: "List all topics",
+        inputSchema: z.object({}),
+        execute: async () => {
+          const topics = self.getStatesByType("topic");
+          if (topics.length === 0) return "No topics yet.";
+          return topics.map((t) => `- ${t.name}`).join("\n");
+        },
+      }),
+      web_search: tool({
+        description: "Search the web using Brave Search",
+        inputSchema: z.object({
+          query: z.string().describe("Search query"),
+          count: z.number().optional().default(5),
+        }),
+        execute: async ({ query, count }) => {
+          const apiKey = self.env.BRAVE_SEARCH_API_KEY;
+          if (!apiKey) return "Error: BRAVE_SEARCH_API_KEY not configured";
+          try {
+            const results = await searchWeb(query, apiKey, {
+              count: Math.min(count ?? 5, 10),
+            });
+            if (results.length === 0) return `No results found for "${query}"`;
+            return results
+              .map((r) => `**${r.title}**\n${r.url}\n${r.description}`)
+              .join("\n\n");
+          } catch (error) {
+            return `Search error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        },
+      }),
+    };
+  }
+
+  /** Run an agent task with tool access */
+  private async runAgentTask(options: {
+    task: string;
+    prompt: string;
+    model?: string;
+    maxSteps?: number;
+  }): Promise<string> {
+    const { task, prompt, model: modelTier, maxSteps = 10 } = options;
+
+    // Get context for the agent
+    const context = this.getAgentContext();
+    const systemPrompt = `You are a background agent performing a scheduled task. You have access to tools to read and write memory.
+
+${context}
+
+## Task
+${task}
+
+Complete the task using the available tools. Be thorough but concise.`;
+
+    const model = createModel(this.env, modelTier ?? "thinking");
+    const tools = this.createAgentTools();
+
+    const { text, steps } = await generateText({
+      model,
+      system: systemPrompt,
+      prompt,
+      tools,
+      stopWhen: stepCountIs(maxSteps),
+    });
+
+    console.log(`[AGENT] Task "${task}" completed in ${steps.length} steps`);
+    return text;
   }
 
   async init() {
@@ -693,7 +867,7 @@ Then you're ready to help.`,
 
     this.server.tool(
       "refine",
-      "Ask the cloud agent to do deep processing on your memory - consolidation, pattern recognition, cleanup.",
+      "Ask the cloud agent to do deep processing on your memory - consolidation, pattern recognition, cleanup. The agent has tool access and can make changes.",
       {
         task: z
           .enum(["consolidate", "reflect", "cleanup", "research"])
@@ -701,41 +875,43 @@ Then you're ready to help.`,
         focus: z.string().optional().describe("Specific area to focus on"),
       },
       async ({ task, focus }) => {
-        const prompts: Record<string, string> = {
-          consolidate: `Review recent journal entries and consolidate them into updated topics. Look for patterns, recurring themes, and knowledge worth preserving. ${focus ? `Focus on: ${focus}` : ""}`,
-          reflect: `Reflect on recent activity and identify insights, patterns, or things worth remembering. ${focus ? `Focus on: ${focus}` : ""}`,
-          cleanup: `Review memory for stale, outdated, or redundant entries. Suggest what to archive or update. ${focus ? `Focus on: ${focus}` : ""}`,
-          research: `Research and gather information about: ${focus ?? "recent topics of interest"}.`,
+        const taskDescriptions: Record<string, string> = {
+          consolidate:
+            "Review recent journal entries and consolidate them into updated topics. Look for patterns, recurring themes, and knowledge worth preserving. Create or update topic files as needed.",
+          reflect:
+            "Reflect on recent activity and identify insights, patterns, or things worth remembering. Log important observations to journal and update relevant topics.",
+          cleanup:
+            "Review memory for stale, outdated, or redundant entries. Update or remove outdated information from topics. Keep things current.",
+          research:
+            "Research and gather information using web search. Save findings to relevant topics or journal.",
         };
 
-        const context = await this.env.VECTORIZE.query(
-          await this.getEmbedding(focus ?? task),
-          {
-            topK: 10,
-            returnMetadata: "all",
-          },
-        );
+        const prompt = focus
+          ? `${taskDescriptions[task]}\n\nFocus area: ${focus}`
+          : taskDescriptions[task];
 
-        const contextText = context.matches
-          .map((m) => {
-            const meta = m.metadata as Record<string, string>;
-            return `[${meta.type}] ${meta.content}`;
-          })
-          .join("\n\n");
+        try {
+          const result = await this.runAgentTask({
+            task: `refine:${task}`,
+            prompt,
+            model: "thinking",
+          });
 
-        // Use "thinking" tier for refinement tasks - they need deeper reasoning
-        const model = createModel(this.env, "thinking");
-
-        const { text } = await generateText({
-          model,
-          prompt: `${prompts[task]}\n\n## Current Memory Context\n\n${contextText}\n\nProvide your analysis and any recommended updates.`,
-        });
-
-        return {
-          content: [
-            { type: "text", text: `## Refinement: ${task}\n\n${text}` },
-          ],
-        };
+          return {
+            content: [
+              { type: "text", text: `## Refinement: ${task}\n\n${result}` },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Refinement error: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+          };
+        }
       },
     );
 
@@ -852,11 +1028,13 @@ Then you're ready to help.`,
               task?: string;
             };
             const desc = payload?.description ?? payload?.task ?? "Unknown";
+            // s.time is Unix timestamp in seconds, convert to ms for Date
+            const timeMs = s.time ? s.time * 1000 : 0;
             const typeInfo =
               s.type === "cron"
                 ? `cron: ${s.cron}`
-                : `once: ${new Date(s.time).toISOString()}`;
-            return `- **${s.id}**: ${desc}\n  ${typeInfo}\n  Next: ${s.time ? new Date(s.time).toISOString() : "N/A"}`;
+                : `once: ${new Date(timeMs).toISOString()}`;
+            return `- **${s.id}**: ${desc}\n  ${typeInfo}\n  Next: ${timeMs ? new Date(timeMs).toISOString() : "N/A"}`;
           })
           .join("\n\n");
 
@@ -898,74 +1076,57 @@ Then you're ready to help.`,
   }) {
     console.log(`[SCHEDULED] Running task: ${data.description ?? data.task}`);
 
-    // Get relevant context for the task
-    const searchTerm = data.payload ?? data.description ?? data.task;
-    const context = await this.env.VECTORIZE.query(
-      await this.getEmbedding(searchTerm),
-      {
-        topK: 10,
-        returnMetadata: "all",
-      },
-    );
-
-    const contextText = context.matches
-      .map((m) => {
-        const meta = m.metadata as Record<string, string>;
-        return `[${meta.type}] ${meta.content}`;
-      })
-      .join("\n\n");
-
     // Build task-specific prompts
     const taskPrompts: Record<string, string> = {
       consolidate:
-        "Review the context and consolidate learnings into updated topics. Identify patterns and knowledge worth preserving.",
+        "Review recent journal entries and consolidate learnings into updated topics. Use search_memory to find relevant entries, then use write_state to update or create topics. Identify patterns and knowledge worth preserving.",
       reflect:
-        "Reflect on recent activity and identify insights, patterns, or things worth remembering.",
+        "Reflect on recent activity and identify insights, patterns, or things worth remembering. Search memory for recent entries, log important observations to journal, and update relevant topics.",
       cleanup:
-        "Review memory for stale, outdated, or redundant entries. Identify what should be archived or updated.",
+        "Review memory for stale, outdated, or redundant entries. Search for old topics, check if they're still accurate, and update or consolidate as needed. Keep the knowledge base current.",
       briefing:
-        "Prepare a briefing based on the context. Summarize what's important and what needs attention.",
-      custom: data.payload ?? "Execute the scheduled task.",
+        "Prepare a briefing of what's important and what needs attention. Search memory for recent activity, priorities, and open threads. Summarize key points.",
+      custom:
+        data.payload ?? "Execute the scheduled task using available tools.",
     };
 
-    const prompt = `${taskPrompts[data.task] ?? taskPrompts.custom}
+    const basePrompt = taskPrompts[data.task] ?? taskPrompts.custom;
+    const prompt =
+      data.payload && data.task !== "custom"
+        ? `${basePrompt}\n\nAdditional instructions: ${data.payload}`
+        : basePrompt;
 
-## Context
-${contextText}
-
-Provide your analysis and any recommended actions.`;
-
-    // Select model - use specified tier or model ID
-    // Default to "thinking" for analysis tasks, "fast" for custom/briefing
+    // Select model tier
     const needsThinking = ["reflect", "cleanup", "consolidate"].includes(
       data.task,
     );
-    const defaultModel = needsThinking ? "thinking" : "fast";
-    const model = createModel(this.env, data.model ?? defaultModel);
+    const modelTier = data.model ?? (needsThinking ? "thinking" : "fast");
 
-    const { text } = await generateText({
-      model,
-      prompt,
-    });
+    try {
+      const result = await this.runAgentTask({
+        task: `scheduled:${data.task}`,
+        prompt,
+        model: modelTier,
+        maxSteps: 15, // Allow more steps for scheduled tasks
+      });
 
-    // Log the result to journal
-    const journalId = `journal-scheduled-${Date.now()}`;
-    await this.env.VECTORIZE.upsert([
-      {
-        id: journalId,
-        values: await this.getEmbedding(`scheduled ${data.task}: ${text}`),
-        metadata: {
-          type: "journal",
-          topic: `scheduled-${data.task}`,
-          content: text,
-          scheduleId: data.id ?? "",
-          description: data.description ?? "",
-          timestamp: new Date().toISOString(),
-        },
-      },
-    ]);
+      // Log the completion to journal
+      await this.saveJournal(
+        `scheduled-${data.task}`,
+        `Completed scheduled task: ${data.description ?? data.task}\n\nSummary: ${result.slice(0, 500)}`,
+      );
 
-    console.log(`[SCHEDULED] Task complete: ${data.description ?? data.task}`);
+      console.log(
+        `[SCHEDULED] Task complete: ${data.description ?? data.task}`,
+      );
+    } catch (error) {
+      console.error(`[SCHEDULED] Task failed: ${error}`);
+      // Log the failure
+      await this.saveJournal(
+        `scheduled-${data.task}-error`,
+        `Scheduled task failed: ${data.description ?? data.task}\n\nError: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   // ==========================================
@@ -1038,7 +1199,12 @@ export default {
         }
       }
 
-      return MemoryAgent.serve("/mcp").fetch(request, env, ctx);
+      // Use singleton session so all requests route to the same DO
+      return MemoryAgent.serve("/mcp", { sessionId: "singleton" }).fetch(
+        request,
+        env,
+        ctx,
+      );
     }
 
     return new Response("Not found", { status: 404 });

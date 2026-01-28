@@ -7,7 +7,10 @@
 		"check": "pnpm run --filter @innie-ai/* check",
 		"test": "pnpm run --filter @innie-ai/* test",
 		"build": "pnpm run --filter @innie-ai/* build",
-		"format": "prettier --write ."
+		"format": "prettier --write .",
+		"restart-server": "launchctl kickstart -k gui/$(id -u)/gg.mk.innie.opencode-server",
+		"restart-scheduler": "launchctl kickstart -k gui/$(id -u)/gg.mk.innie.scheduler",
+		"restart": "pnpm restart-server && pnpm restart-scheduler"
 	},
 	"keywords": [],
 	"author": "Matt Kane",
@@ -23,6 +26,9 @@
 			"esbuild",
 			"protobufjs",
 			"sharp"
-		]
+		],
+		"patchedDependencies": {
+			"agents": "patches/agents.patch"
+		}
 	}
 }
