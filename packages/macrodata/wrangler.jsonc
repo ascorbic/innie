@@ -61,4 +61,5 @@
   // - GITHUB_CLIENT_ID: GitHub OAuth client ID
   // - GITHUB_CLIENT_SECRET: GitHub OAuth client secret
   // - OAUTH_REDIRECT_BASE: Base URL for OAuth callbacks (e.g., "https://macrodata.your.workers.dev")
+  // - ALLOWED_USERS: Comma-separated list of allowed email addresses (e.g., "matt@example.com,admin@example.com")
 }

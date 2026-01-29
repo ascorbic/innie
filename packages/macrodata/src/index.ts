@@ -33,6 +33,7 @@ declare global {
     GITHUB_CLIENT_ID?: string;
     GITHUB_CLIENT_SECRET?: string;
     OAUTH_REDIRECT_BASE?: string;
+    ALLOWED_USERS?: string; // Comma-separated list of allowed emails
   }
 }
 
@@ -68,12 +69,16 @@ function createIdentityProviders(env: Env) {
   return providers;
 }
 
-// Allowed Cloudflare AI Gateway workers (for MCP portal access without OAuth)
-const allowedWorkers = new Set([
-  "agents-gateway.workers.dev",
-  "gateway.agents.cloudflare.com",
-  "agw.ai.cfdata.org",
-]);
+// Helper to check if user is allowed
+function isAllowedUser(email: string, env: Env): boolean {
+  const allowedUsers = env.ALLOWED_USERS;
+  if (!allowedUsers) {
+    // No allowlist configured = nobody allowed (locked down by default)
+    return false;
+  }
+  const allowed = allowedUsers.split(",").map(e => e.trim().toLowerCase());
+  return allowed.includes(email.toLowerCase());
+}
 
 /**
  * Default handler - handles non-API requests including:
@@ -221,6 +226,12 @@ const defaultHandler = {
 
         const userInfo = (await userResponse.json()) as { email: string; name?: string };
 
+        // Check if user is allowed
+        if (!isAllowedUser(userInfo.email, env)) {
+          console.warn(`[CALLBACK/GOOGLE] Rejected user: ${userInfo.email}`);
+          return new Response("Access denied. Your account is not authorized to use this service.", { status: 403 });
+        }
+
         // Complete the MCP OAuth flow
         const mcpRequest = pending.mcpOAuthRequest as Awaited<ReturnType<OAuthHelpers["parseAuthRequest"]>>;
         const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
@@ -325,6 +336,12 @@ const defaultHandler = {
           }
         }
 
+        // Check if user is allowed
+        if (!isAllowedUser(email, env)) {
+          console.warn(`[CALLBACK/GITHUB] Rejected user: ${email}`);
+          return new Response("Access denied. Your account is not authorized to use this service.", { status: 403 });
+        }
+
         // Complete the MCP OAuth flow
         const mcpRequest = pending.mcpOAuthRequest as Awaited<ReturnType<OAuthHelpers["parseAuthRequest"]>>;
         const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
@@ -373,16 +390,12 @@ const mcpApiHandler = {
     env: any,
     ctx: any
   ): Promise<Response> {
-    // Check for Cloudflare AI Gateway bypass (trusted workers)
-    const cfWorker = request.headers.get("cf-worker");
-    const isFromPortal = cfWorker && allowedWorkers.has(cfWorker);
-
-    if (isFromPortal) {
-      console.log(`[MCP] Request from Cloudflare portal (${cfWorker}), allowing without OAuth`);
-    } else if (ctx.props) {
+    // OAuth is required - ctx.props contains the authenticated user info
+    if (ctx.props) {
       console.log(`[MCP] Authenticated request from: ${ctx.props.email} (${ctx.props.provider})`);
     } else {
-      console.log(`[MCP] Request without props - may be from portal or test`);
+      console.log(`[MCP] Request without authentication props`);
+      return new Response("Unauthorized", { status: 401 });
     }
 
     // Route to the MCP Durable Object
