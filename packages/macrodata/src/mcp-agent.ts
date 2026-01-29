@@ -17,6 +17,16 @@ import { createModel, formatModelOptions } from "./models";
 // Embedding model: 768 dimensions
 const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
 
+// Connected external MCP
+interface ConnectedMcp {
+  name: string;
+  endpoint: string;
+  accessToken: string;
+  refreshToken?: string;
+  tokenExpiresAt?: number;
+  connectedAt: string;
+}
+
 // State file types
 type StateType = "identity" | "today" | "topic" | "project" | "person";
 
@@ -1060,6 +1070,100 @@ Then you're ready to help.`,
         };
       },
     );
+
+    // ==========================================
+    // External MCP Tools
+    // ==========================================
+
+    this.server.tool(
+      "list_external_mcps",
+      "List all connected external MCP servers.",
+      {},
+      async () => {
+        const mcps = await this.getConnectedMcps();
+
+        if (mcps.length === 0) {
+          return {
+            content: [{ type: "text", text: "No external MCPs connected. Add them at /settings/mcps" }],
+          };
+        }
+
+        const formatted = mcps.map(m => `- **${m.name}**: ${m.endpoint}`).join("\n");
+        return {
+          content: [{ type: "text", text: `## Connected MCPs\n\n${formatted}` }],
+        };
+      },
+    );
+
+    this.server.tool(
+      "list_external_tools",
+      "List available tools from an external MCP server.",
+      {
+        mcpName: z.string().describe("Name of the connected MCP"),
+      },
+      async ({ mcpName }) => {
+        const mcps = await this.getConnectedMcps();
+        const mcp = mcps.find(m => m.name === mcpName);
+
+        if (!mcp) {
+          return {
+            content: [{ type: "text", text: `MCP "${mcpName}" not found. Use list_external_mcps to see available MCPs.` }],
+          };
+        }
+
+        try {
+          const tools = await this.fetchMcpTools(mcp);
+          if (tools.length === 0) {
+            return {
+              content: [{ type: "text", text: `No tools available from ${mcpName}.` }],
+            };
+          }
+
+          const formatted = tools.map(t =>
+            `- **${t.name}**: ${t.description || "(no description)"}`
+          ).join("\n");
+
+          return {
+            content: [{ type: "text", text: `## Tools from ${mcpName}\n\n${formatted}` }],
+          };
+        } catch (error) {
+          return {
+            content: [{ type: "text", text: `Error fetching tools from ${mcpName}: ${error instanceof Error ? error.message : String(error)}` }],
+          };
+        }
+      },
+    );
+
+    this.server.tool(
+      "call_external_tool",
+      "Call a tool on an external MCP server.",
+      {
+        mcpName: z.string().describe("Name of the connected MCP"),
+        toolName: z.string().describe("Name of the tool to call"),
+        args: z.record(z.unknown()).optional().describe("Arguments to pass to the tool"),
+      },
+      async ({ mcpName, toolName, args }) => {
+        const mcps = await this.getConnectedMcps();
+        const mcp = mcps.find(m => m.name === mcpName);
+
+        if (!mcp) {
+          return {
+            content: [{ type: "text", text: `MCP "${mcpName}" not found. Use list_external_mcps to see available MCPs.` }],
+          };
+        }
+
+        try {
+          const result = await this.callMcpTool(mcp, toolName, args ?? {});
+          return {
+            content: [{ type: "text", text: result }],
+          };
+        } catch (error) {
+          return {
+            content: [{ type: "text", text: `Error calling ${toolName} on ${mcpName}: ${error instanceof Error ? error.message : String(error)}` }],
+          };
+        }
+      },
+    );
   }
 
   // ==========================================
@@ -1139,5 +1243,100 @@ Then you're ready to help.`,
       return result.data[0];
     }
     throw new Error("Failed to generate embedding");
+  }
+
+  // ==========================================
+  // External MCP Methods
+  // ==========================================
+
+  /** Get the user ID from the DO name (sessionId = userId) */
+  private getUserId(): string {
+    // The DO name/id is the userId (set via sessionId in the serve call)
+    return this.ctx.id.toString();
+  }
+
+  /** Get connected MCPs for this user from KV */
+  private async getConnectedMcps(): Promise<ConnectedMcp[]> {
+    const userId = this.getUserId();
+    const mcpsJson = await this.env.OAUTH_KV?.get(`user:${userId}:mcps`);
+    return mcpsJson ? JSON.parse(mcpsJson) : [];
+  }
+
+  /** Fetch tools list from an external MCP (via HTTP/SSE) */
+  private async fetchMcpTools(mcp: ConnectedMcp): Promise<Array<{ name: string; description?: string }>> {
+    // MCP over HTTP - call tools/list
+    const response = await fetch(new URL("/mcp", mcp.endpoint), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${mcp.accessToken}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {},
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    const result = await response.json() as {
+      result?: { tools: Array<{ name: string; description?: string }> };
+      error?: { message: string };
+    };
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+
+    return result.result?.tools ?? [];
+  }
+
+  /** Call a tool on an external MCP */
+  private async callMcpTool(
+    mcp: ConnectedMcp,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<string> {
+    const response = await fetch(new URL("/mcp", mcp.endpoint), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${mcp.accessToken}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: toolName,
+          arguments: args,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    const result = await response.json() as {
+      result?: { content: Array<{ type: string; text?: string }> };
+      error?: { message: string };
+    };
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+
+    // Extract text content from the result
+    const textContent = result.result?.content
+      ?.filter(c => c.type === "text" && c.text)
+      .map(c => c.text)
+      .join("\n");
+
+    return textContent || "Tool returned no text content.";
   }
 }
