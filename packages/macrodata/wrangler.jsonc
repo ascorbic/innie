@@ -48,7 +48,10 @@
   // - CF_API_TOKEN: For AI Gateway auth (BYOK) + Browser Rendering API
   // - ANTHROPIC_API_KEY: Optional, for Anthropic models (or use BYOK via gateway)
   //
-  // Access JWT validation (optional - set to require Cloudflare Access):
-  // - ACCESS_TEAM_DOMAIN: Your team domain (e.g., "https://myteam.cloudflareaccess.com")
-  // - ACCESS_POLICY_AUD: The Application Audience (AUD) tag from your Access app
+  // OAuth config (set via wrangler secret put):
+  // - GOOGLE_CLIENT_ID: Google OAuth client ID
+  // - GOOGLE_CLIENT_SECRET: Google OAuth client secret
+  // - GITHUB_CLIENT_ID: GitHub OAuth client ID
+  // - GITHUB_CLIENT_SECRET: GitHub OAuth client secret
+  // - OAUTH_REDIRECT_BASE: Base URL for OAuth callbacks (e.g., "https://macrodata.your.workers.dev")
 }

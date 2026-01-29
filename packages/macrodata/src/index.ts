@@ -13,6 +13,32 @@ import { generateText, tool, stepCountIs } from "ai";
 import { searchWeb, searchNews } from "./web-search";
 import { fetchPageAsMarkdown } from "./web-fetch";
 import { createModel, formatModelOptions } from "./models";
+import {
+  createProviders,
+  startGoogleAuth,
+  startGitHubAuth,
+  completeGoogleAuth,
+  completeGitHubAuth,
+  refreshGoogleToken,
+  tokensToStoredAuth,
+  isAuthExpired,
+  errorResponse,
+  redirectResponse,
+  jsonResponse,
+  type StoredAuth,
+  type PendingOAuth,
+} from "./oauth";
+
+// Extend Env with OAuth vars (not auto-generated yet)
+declare global {
+  interface Env {
+    GOOGLE_CLIENT_ID?: string;
+    GOOGLE_CLIENT_SECRET?: string;
+    GITHUB_CLIENT_ID?: string;
+    GITHUB_CLIENT_SECRET?: string;
+    OAUTH_REDIRECT_BASE?: string;
+  }
+}
 
 // Embedding model: 768 dimensions
 const EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5";
@@ -37,14 +63,104 @@ type JournalRow = {
   timestamp: string;
 };
 
+// Storage keys for auth
+const AUTH_KEY = "oauth:auth";
+const PENDING_KEY = "oauth:pending";
+
 export class MemoryAgent extends McpAgent<Env> {
   // URLs allowed to be fetched (from search results or user input)
   private allowedUrls: Set<string> = new Set();
 
   server = new McpServer({
     name: "Macrodata",
-    version: "0.1.0",
+    version: "0.2.0",
   });
+
+  // ==========================================
+  // Auth Storage (via DO KV storage)
+  // ==========================================
+
+  /** Get stored OAuth auth */
+  async getStoredAuth(): Promise<StoredAuth | null> {
+    const auth = await this.ctx.storage.get<StoredAuth>(AUTH_KEY);
+    return auth ?? null;
+  }
+
+  /** Store OAuth auth */
+  async setStoredAuth(auth: StoredAuth): Promise<void> {
+    await this.ctx.storage.put(AUTH_KEY, auth);
+  }
+
+  /** Clear stored OAuth auth */
+  async clearStoredAuth(): Promise<void> {
+    await this.ctx.storage.delete(AUTH_KEY);
+  }
+
+  /** Get pending OAuth flow */
+  async getPendingOAuth(): Promise<PendingOAuth | null> {
+    const pending = await this.ctx.storage.get<PendingOAuth>(PENDING_KEY);
+    return pending ?? null;
+  }
+
+  /** Store pending OAuth flow */
+  async setPendingOAuth(pending: PendingOAuth): Promise<void> {
+    await this.ctx.storage.put(PENDING_KEY, pending);
+  }
+
+  /** Clear pending OAuth flow */
+  async clearPendingOAuth(): Promise<void> {
+    await this.ctx.storage.delete(PENDING_KEY);
+  }
+
+  /**
+   * Handle internal auth requests from the worker
+   * These are routed via fetch to the DO
+   */
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Internal auth endpoints
+    if (url.pathname === "/auth/current") {
+      const auth = await this.getStoredAuth();
+      if (!auth) {
+        return new Response(null, { status: 404 });
+      }
+      return Response.json(auth);
+    }
+
+    if (url.pathname === "/auth/store") {
+      if (request.method === "DELETE") {
+        await this.clearStoredAuth();
+        return new Response(null, { status: 204 });
+      }
+      if (request.method === "POST") {
+        const auth = await request.json() as StoredAuth;
+        await this.setStoredAuth(auth);
+        return new Response(null, { status: 204 });
+      }
+    }
+
+    if (url.pathname === "/auth/pending") {
+      if (request.method === "DELETE") {
+        await this.clearPendingOAuth();
+        return new Response(null, { status: 204 });
+      }
+      if (request.method === "POST") {
+        const pending = await request.json() as PendingOAuth;
+        await this.setPendingOAuth(pending);
+        return new Response(null, { status: 204 });
+      }
+      // GET
+      const pending = await this.getPendingOAuth();
+      if (!pending) {
+        return new Response(null, { status: 404 });
+      }
+      return Response.json(pending);
+    }
+
+    // Pass through to parent (MCP handling)
+    return super.fetch(request);
+  }
 
   /** Initialize SQLite schema */
   private initSchema() {
@@ -1146,8 +1262,7 @@ Then you're ready to help.`,
 // Worker Entry Point
 // ==========================================
 
-import { validateAccessJWT, unauthorizedResponse } from "./auth";
-
+// Allowed Cloudflare AI Gateway workers (for MCP portal access)
 const allowedWorkers = new Set([
   "agents-gateway.workers.dev",
   "gateway.agents.cloudflare.com",
@@ -1164,39 +1279,304 @@ export default {
 
     // Health check (always allowed)
     if (url.pathname === "/health") {
-      return Response.json({
+      return jsonResponse({
         name: "macrodata",
         status: "ok",
-        version: "0.1.0",
+        version: "0.2.0",
       });
     }
 
-    // MCP endpoint
+    // Get DO stub for auth operations
+    const getAuthDO = () => {
+      const id = env.MCP_OBJECT.idFromName("singleton");
+      return env.MCP_OBJECT.get(id);
+    };
+
+    // ==========================================
+    // OAuth Routes
+    // ==========================================
+
+    // Start Google OAuth
+    if (url.pathname === "/auth/google") {
+      const providers = createProviders(env);
+      if (!providers.google) {
+        return errorResponse("Google OAuth not configured", 500);
+      }
+
+      const { url: authUrl, state, codeVerifier } = startGoogleAuth(providers.google);
+
+      // Store pending OAuth in DO
+      const stub = getAuthDO();
+      await stub.fetch(new Request("http://internal/auth/pending", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "google",
+          state,
+          codeVerifier,
+          createdAt: Date.now(),
+        } satisfies PendingOAuth),
+      }));
+
+      return redirectResponse(authUrl);
+    }
+
+    // Start GitHub OAuth
+    if (url.pathname === "/auth/github") {
+      const providers = createProviders(env);
+      if (!providers.github) {
+        return errorResponse("GitHub OAuth not configured", 500);
+      }
+
+      const { url: authUrl, state } = startGitHubAuth(providers.github);
+
+      // Store pending OAuth in DO
+      const stub = getAuthDO();
+      await stub.fetch(new Request("http://internal/auth/pending", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "github",
+          state,
+          codeVerifier: null,
+          createdAt: Date.now(),
+        } satisfies PendingOAuth),
+      }));
+
+      return redirectResponse(authUrl);
+    }
+
+    // Google OAuth callback
+    if (url.pathname === "/callback/google") {
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        return errorResponse(`OAuth error: ${error}`);
+      }
+
+      if (!code || !state) {
+        return errorResponse("Missing code or state");
+      }
+
+      const providers = createProviders(env);
+      if (!providers.google) {
+        return errorResponse("Google OAuth not configured", 500);
+      }
+
+      // Get and validate pending OAuth from DO
+      const stub = getAuthDO();
+      const pendingResp = await stub.fetch(new Request("http://internal/auth/pending"));
+      if (!pendingResp.ok) {
+        return errorResponse("No pending OAuth flow");
+      }
+
+      const pending = await pendingResp.json() as PendingOAuth | null;
+      if (!pending || pending.provider !== "google" || pending.state !== state) {
+        return errorResponse("Invalid OAuth state");
+      }
+
+      if (!pending.codeVerifier) {
+        return errorResponse("Missing code verifier for Google OAuth");
+      }
+
+      try {
+        const { tokens, email } = await completeGoogleAuth(
+          providers.google,
+          code,
+          pending.codeVerifier
+        );
+
+        const storedAuth = tokensToStoredAuth(tokens, "google", email);
+
+        // Store auth in DO
+        await stub.fetch(new Request("http://internal/auth/store", {
+          method: "POST",
+          body: JSON.stringify(storedAuth),
+        }));
+
+        // Clear pending
+        await stub.fetch(new Request("http://internal/auth/pending", {
+          method: "DELETE",
+        }));
+
+        return jsonResponse({
+          success: true,
+          message: `Authenticated as ${email}`,
+          email,
+          provider: "google",
+        });
+      } catch (err) {
+        console.error("[OAUTH] Google callback error:", err);
+        return errorResponse(
+          `OAuth failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+
+    // GitHub OAuth callback
+    if (url.pathname === "/callback/github") {
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state");
+      const error = url.searchParams.get("error");
+
+      if (error) {
+        return errorResponse(`OAuth error: ${error}`);
+      }
+
+      if (!code || !state) {
+        return errorResponse("Missing code or state");
+      }
+
+      const providers = createProviders(env);
+      if (!providers.github) {
+        return errorResponse("GitHub OAuth not configured", 500);
+      }
+
+      // Get and validate pending OAuth from DO
+      const stub = getAuthDO();
+      const pendingResp = await stub.fetch(new Request("http://internal/auth/pending"));
+      if (!pendingResp.ok) {
+        return errorResponse("No pending OAuth flow");
+      }
+
+      const pending = await pendingResp.json() as PendingOAuth | null;
+      if (!pending || pending.provider !== "github" || pending.state !== state) {
+        return errorResponse("Invalid OAuth state");
+      }
+
+      try {
+        const { tokens, email } = await completeGitHubAuth(providers.github, code);
+
+        const storedAuth = tokensToStoredAuth(tokens, "github", email);
+
+        // Store auth in DO
+        await stub.fetch(new Request("http://internal/auth/store", {
+          method: "POST",
+          body: JSON.stringify(storedAuth),
+        }));
+
+        // Clear pending
+        await stub.fetch(new Request("http://internal/auth/pending", {
+          method: "DELETE",
+        }));
+
+        return jsonResponse({
+          success: true,
+          message: `Authenticated as ${email}`,
+          email,
+          provider: "github",
+        });
+      } catch (err) {
+        console.error("[OAUTH] GitHub callback error:", err);
+        return errorResponse(
+          `OAuth failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+
+    // Check auth status
+    if (url.pathname === "/auth/status") {
+      const stub = getAuthDO();
+      const authResp = await stub.fetch(new Request("http://internal/auth/current"));
+
+      if (!authResp.ok) {
+        return jsonResponse({ authenticated: false });
+      }
+
+      const auth = await authResp.json() as StoredAuth | null;
+      if (!auth) {
+        return jsonResponse({ authenticated: false });
+      }
+
+      return jsonResponse({
+        authenticated: true,
+        email: auth.email,
+        provider: auth.provider,
+        expiresAt: auth.expiresAt,
+      });
+    }
+
+    // Logout
+    if (url.pathname === "/auth/logout" && request.method === "POST") {
+      const stub = getAuthDO();
+      await stub.fetch(new Request("http://internal/auth/store", {
+        method: "DELETE",
+      }));
+
+      return jsonResponse({ success: true, message: "Logged out" });
+    }
+
+    // ==========================================
+    // MCP Endpoint (requires auth)
+    // ==========================================
+
     if (url.pathname === "/mcp") {
       console.log("headers:", [...request.headers.entries()]);
 
       // This can't be faked by end users, only Cloudflare sets this header
       const cfWorker = request.headers.get("cf-worker");
       console.log(`[AUTH] cf-worker header: ${cfWorker}`);
+
       // Allow requests from Cloudflare's AI gateway (MCP portal)
       const isFromPortal = cfWorker && allowedWorkers.has(cfWorker);
 
       if (isFromPortal) {
-        console.log(
-          `[AUTH] Request from Cloudflare portal (${cfWorker}), allowing`,
-        );
+        console.log(`[AUTH] Request from Cloudflare portal (${cfWorker}), allowing`);
       } else {
-        // Validate Cloudflare Access JWT for direct requests
-        const auth = await validateAccessJWT(request, env);
+        // Check OAuth auth stored in DO
+        const stub = getAuthDO();
+        const authResp = await stub.fetch(new Request("http://internal/auth/current"));
 
-        if (!auth.authenticated) {
-          console.log(`[AUTH] Rejecting direct request - not authenticated`);
-          return unauthorizedResponse(auth.error ?? "Unauthorized");
+        if (!authResp.ok) {
+          return errorResponse(
+            "Not authenticated. Visit /auth/google or /auth/github to login.",
+            401
+          );
         }
 
-        if (auth.user) {
-          console.log(`[AUTH] Request from: ${auth.user.email}`);
+        const auth = await authResp.json() as StoredAuth | null;
+        if (!auth) {
+          return errorResponse(
+            "Not authenticated. Visit /auth/google or /auth/github to login.",
+            401
+          );
         }
+
+        // Check if token expired and try refresh
+        if (isAuthExpired(auth)) {
+          if (auth.provider === "google" && auth.refreshToken) {
+            try {
+              const providers = createProviders(env);
+              if (providers.google) {
+                console.log("[AUTH] Refreshing expired Google token");
+                const tokens = await refreshGoogleToken(providers.google, auth.refreshToken);
+                const newAuth = tokensToStoredAuth(tokens, "google", auth.email);
+                // Preserve refresh token if new one not provided
+                if (!newAuth.refreshToken) {
+                  newAuth.refreshToken = auth.refreshToken;
+                }
+                await stub.fetch(new Request("http://internal/auth/store", {
+                  method: "POST",
+                  body: JSON.stringify(newAuth),
+                }));
+                console.log("[AUTH] Token refreshed successfully");
+              }
+            } catch (err) {
+              console.error("[AUTH] Token refresh failed:", err);
+              return errorResponse(
+                "Session expired. Visit /auth/google to re-authenticate.",
+                401
+              );
+            }
+          } else {
+            return errorResponse(
+              "Session expired. Re-authenticate at /auth/google or /auth/github.",
+              401
+            );
+          }
+        }
+
+        console.log(`[AUTH] Request from: ${auth.email} (${auth.provider})`);
       }
 
       // Use singleton session so all requests route to the same DO
