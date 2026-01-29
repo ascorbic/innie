@@ -1140,7 +1140,7 @@ Then you're ready to help.`,
       {
         mcpName: z.string().describe("Name of the connected MCP"),
         toolName: z.string().describe("Name of the tool to call"),
-        args: z.record(z.unknown()).optional().describe("Arguments to pass to the tool"),
+        args: z.record(z.string(), z.unknown()).optional().describe("Arguments to pass to the tool"),
       },
       async ({ mcpName, toolName, args }) => {
         const mcps = await this.getConnectedMcps();
