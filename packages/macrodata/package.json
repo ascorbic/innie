@@ -11,6 +11,7 @@
     "vectorize:create": "wrangler vectorize create macrodata-memory --dimensions=768 --metric=cosine"
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^0.2.2",
     "@modelcontextprotocol/sdk": "1.25.2",
     "agents": "^0.3.6",
     "ai": "^6.0.27",

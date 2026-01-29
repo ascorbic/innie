@@ -38,6 +38,13 @@
   "observability": {
     "enabled": true,
   },
+  // KV namespace for OAuth token storage
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "YOUR_KV_NAMESPACE_ID"
+    }
+  ],
   "vars": {
     "ENVIRONMENT": "development",
     // AI Gateway config (for external model providers)
